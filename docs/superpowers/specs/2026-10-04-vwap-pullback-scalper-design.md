@@ -43,9 +43,10 @@ All times are Europe/London (Pine `"Europe/London"` timezone, so DST is handled)
      `request.security(..., lookahead = barmerge.lookahead_off)` from the
      *previous closed* HTF bar (`ema[1]`) so it never repaints.
 3. **Entry (touch and reclaim):**
-   - Long: within the last `touchLookback` bars (default 5) some bar's low ≤
-     VWAP, and the current bar closes > VWAP after the previous close was ≤
-     VWAP or the touching bar is the current bar. Enter at bar close
+   - Long: some bar within the last `touchLookback` bars (default 5,
+     including the current bar) has low ≤ VWAP, **and** the current bar closes
+     > VWAP, **and** either the previous close was ≤ VWAP or the current bar is
+     itself the touching bar. Enter at bar close
      (`process_orders_on_close = true`).
    - Short: mirror (high ≥ VWAP, close back below).
    - Only when flat, inside the entry window (session start → `noNewEntries`,
