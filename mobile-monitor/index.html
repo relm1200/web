@@ -1,0 +1,667 @@
+<title>Pocket Trade Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: one-thumb phone app — sticky status header, three panels (Watch / Alerts / Calendar), fixed bottom tab bar, bottom sheet for a pair's detail. Dark-first trading-terminal ground. */
+:root{
+  --bg:#0d1315; --surface:#141c1f; --raised:#1b2528; --line:#263236;
+  --fg:#e4ebe9; --muted:#8b9b98; --accent:#e9b44c; --accent-ink:#1a1405;
+  --up:#3fbf8f; --down:#ec6a70; --warn:#e9b44c;
+  --f-display:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-data:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --nav-h:60px;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){
+  --bg:#f1f4f3; --surface:#ffffff; --raised:#f6f8f7; --line:#dbe3e1;
+  --fg:#11191b; --muted:#5a6b68; --accent:#a8740c; --accent-ink:#ffffff;
+  --up:#16845c; --down:#c23a43; --warn:#a8740c; color-scheme:light}}
+:root[data-theme="light"]{
+  --bg:#f1f4f3; --surface:#ffffff; --raised:#f6f8f7; --line:#dbe3e1;
+  --fg:#11191b; --muted:#5a6b68; --accent:#a8740c; --accent-ink:#ffffff;
+  --up:#16845c; --down:#c23a43; --warn:#a8740c; color-scheme:light}
+
+*{box-sizing:border-box}
+html,body{background:var(--bg)}
+body{color:var(--fg);font:15px/1.45 var(--f-body);padding-inline:16px;padding-block:0 calc(var(--nav-h) + env(safe-area-inset-bottom,0px) + 16px);max-width:640px;margin:0 auto;-webkit-tap-highlight-color:transparent}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+a{color:var(--accent)}
+.num{font-family:var(--f-data);font-variant-numeric:tabular-nums}
+.up{color:var(--up)} .down{color:var(--down)} .flat{color:var(--muted)}
+
+/* header */
+header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:14px 10px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--line)}
+header .id{flex:1;min-width:0}
+header h1{font:700 19px/1.1 var(--f-display);letter-spacing:-.01em;margin:0}
+header .sub{font-size:12.5px;color:var(--muted);display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:3px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block}
+.dot.live{background:var(--up);box-shadow:0 0 0 3px color-mix(in srgb,var(--up) 25%,transparent)}
+.dot.bad{background:var(--down)}
+.iconbtn{width:40px;height:40px;border-radius:10px;border:1px solid var(--line);display:grid;place-items:center;color:var(--muted)}
+.iconbtn[aria-pressed="true"]{color:var(--accent);border-color:var(--accent)}
+.iconbtn svg{width:20px;height:20px}
+.spin svg{animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.banner{margin-top:12px;padding:12px 14px;border-radius:10px;background:var(--raised);border:1px solid var(--line);font-size:14px}
+.banner.bad{border-color:var(--down)}
+.note{font-size:12.5px;color:var(--muted);margin:8px 0 0}
+.err{font-size:13px;color:var(--down);margin:6px 0}
+
+h2{font:600 12px/1 var(--f-body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:22px 0 10px;display:flex;justify-content:space-between;gap:8px}
+h2 span{letter-spacing:0;text-transform:none;font-weight:500}
+
+/* watchlist rows */
+.list{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden}
+.row{display:grid;grid-template-columns:minmax(0,1fr) 84px minmax(0,auto);grid-template-areas:"sym spark px" "chip chip chip";column-gap:12px;row-gap:6px;align-items:center;padding:12px 14px;text-align:left;width:100%}
+.row+.row{border-top:1px solid var(--line)}
+.row:active{background:var(--raised)}
+.sym{grid-area:sym;min-width:0}
+.sym b{font:600 16px/1.2 var(--f-display);display:block}
+.sym small{color:var(--muted);font-size:12px}
+.spark{grid-area:spark;width:84px;height:30px}
+.px{grid-area:px;text-align:right}
+.px b{display:block;font:500 16px/1.2 var(--f-data);font-variant-numeric:tabular-nums}
+.px small{font:500 12.5px/1.2 var(--f-data);font-variant-numeric:tabular-nums}
+.chip{grid-area:chip;justify-self:start;font:500 12px/1 var(--f-data);padding:5px 8px;border-radius:999px;background:var(--raised);color:var(--muted);border:1px solid var(--line)}
+.chip.hot{color:var(--accent-ink);background:var(--accent);border-color:var(--accent)}
+.skel{color:var(--muted)}
+
+/* alerts */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.stack{display:flex;flex-direction:column;gap:8px}
+.al{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;align-items:baseline}
+.al .t{font-weight:600;min-width:0;overflow-wrap:anywhere}
+.al .d{text-align:right;font:500 13px var(--f-data);font-variant-numeric:tabular-nums}
+.al .m{grid-column:1/-1;font-size:12.5px;color:var(--muted)}
+.al.hot{border-color:var(--accent)}
+.meter{grid-column:1/-1;height:4px;border-radius:2px;background:var(--raised);overflow:hidden;margin-top:6px}
+.meter i{display:block;height:100%;background:var(--accent)}
+.summary{display:flex;gap:8px;flex-wrap:wrap}
+.pill{font-size:13px;padding:6px 10px;border-radius:999px;background:var(--surface);border:1px solid var(--line)}
+.pill b{font-family:var(--f-data)}
+.fail{color:var(--down);font-weight:500}
+
+/* calendar */
+.ev{display:grid;grid-template-columns:52px minmax(0,1fr);gap:4px 12px}
+.ev .tm{font:500 14px var(--f-data);font-variant-numeric:tabular-nums}
+.ev .ccy{font:600 11px/1 var(--f-data);padding:3px 5px;border-radius:4px;background:var(--raised);border:1px solid var(--line);margin-right:6px;vertical-align:1px}
+.ev .nums{grid-column:2;font:13px var(--f-data);font-variant-numeric:tabular-nums;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap}
+.ev .nums b{color:var(--fg);font-weight:500}
+.ev .aff{grid-column:2;font-size:12px;color:var(--muted)}
+.imp{display:inline-flex;gap:2px;margin-left:6px;vertical-align:2px}
+.imp i{width:5px;height:5px;border-radius:50%;background:var(--line)}
+.imp i.on{background:var(--warn)}
+.ev.soon{border-color:var(--accent)}
+.ev.past{opacity:.72}
+
+/* bottom nav */
+nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px);display:flex;justify-content:center}
+nav.tabs .in{display:grid;grid-template-columns:repeat(3,1fr);width:100%;max-width:640px}
+nav.tabs button{height:var(--nav-h);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11.5px;font-weight:600;color:var(--muted)}
+nav.tabs button svg{width:22px;height:22px}
+nav.tabs button[aria-selected="true"]{color:var(--accent)}
+.badge{font:600 10px/1 var(--f-data);background:var(--accent);color:var(--accent-ink);border-radius:999px;padding:2px 5px;margin-left:3px}
+
+/* sheet */
+.scrim{position:fixed;inset:0;z-index:9;background:rgb(0 0 0 / .5)}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:10;max-height:92%;overflow-y:auto;background:var(--bg);border-top-left-radius:18px;border-top-right-radius:18px;border-top:1px solid var(--line);padding:8px 16px calc(24px + env(safe-area-inset-bottom,0px));max-width:640px;margin:0 auto}
+.grab{width:40px;height:4px;border-radius:2px;background:var(--line);margin:4px auto 10px}
+.sh-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.sh-head h3{font:700 24px/1.1 var(--f-display);margin:0}
+.sh-head .p{text-align:right}
+.sh-head .p b{font:500 22px var(--f-data);display:block;font-variant-numeric:tabular-nums}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:14px 0 8px}
+.seg button{padding:8px 14px;font:500 13px var(--f-data);color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--raised);color:var(--fg)}
+.chart{width:100%;height:230px;display:block}
+.chart text{font:10.5px var(--f-data);fill:var(--muted)}
+.chart .al-l{font-weight:600;fill:var(--accent)}
+.news a{display:block;color:var(--fg);text-decoration:none;padding:10px 0;border-top:1px solid var(--line)}
+.news a:first-child{border-top:0;padding-top:0}
+.news small{color:var(--muted);display:block;margin-top:2px}
+.close{position:sticky;top:0}
+@media (prefers-reduced-motion:reduce){.spin svg{animation:none}}
+</style>
+
+<header>
+  <div class="id">
+    <h1 id="wlName">Pocket Trade Desk</h1>
+    <div class="sub"><span class="dot" id="liveDot"></span><span id="status">Connecting to TradingView…</span></div>
+  </div>
+  <button class="iconbtn" id="wakeBtn" aria-pressed="false" title="Keep screen on" aria-label="Keep screen on">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg>
+  </button>
+  <button class="iconbtn" id="refreshBtn" title="Refresh now" aria-label="Refresh now">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
+  </button>
+</header>
+<div id="pageBanner" hidden></div>
+
+<main>
+  <section id="p-watch" data-panel="watch">
+    <h2>Watchlist <span id="watchNote"></span></h2>
+    <div class="list" id="watchList">
+      <div class="row skel"><div class="sym"><b>Loading your active watchlist</b><small>From TradingView</small></div></div>
+    </div>
+    <p class="note">Prices come from 1-hour bars and can lag the live quote by up to 15 minutes. Change is over the last 24 bars. Tap a pair for its chart, alert levels and news.</p>
+  </section>
+
+  <section id="p-alerts" data-panel="alerts" hidden>
+    <h2>Alerts <span id="alertsNote"></span></h2>
+    <div class="summary" id="alertSummary"></div>
+    <h2>Closest to triggering</h2>
+    <div class="stack" id="alertsNear"><div class="card skel">Loading alerts…</div></div>
+    <h2>Other active alerts</h2>
+    <div class="stack" id="alertsOther"></div>
+    <h2>Fired in the last 7 days <span id="logNote"></span></h2>
+    <div class="stack" id="alertLog"><div class="card skel">Loading alert history…</div></div>
+  </section>
+
+  <section id="p-cal" data-panel="calendar" hidden>
+    <h2>Economic calendar <span id="calNote"></span></h2>
+    <div class="stack" id="calList"><div class="card skel">Loading events for your currencies…</div></div>
+    <p class="note">Medium and high importance events for the currencies in your watchlist, today and the next two days. Times are in your local time zone.</p>
+  </section>
+</main>
+
+<nav class="tabs" aria-label="Sections"><div class="in" role="tablist">
+  <button role="tab" data-tab="watch" aria-selected="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-6 4 4 8-9"/><path d="M3 21h18"/></svg>Watch</button>
+  <button role="tab" data-tab="alerts" aria-selected="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span>Alerts<span class="badge" id="navBadge" hidden></span></span></button>
+  <button role="tab" data-tab="calendar" aria-selected="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Calendar</button>
+</div></nav>
+
+<div class="scrim" id="scrim" hidden></div>
+<div class="sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="shTitle"></div>
+
+<script>
+(() => {
+const SERVER = "Tradingview";
+const T = {
+  wl: "mcp-watchlist-get-active-watchlist",
+  ohlcv: "mcp-tv-get-ohlcv",
+  alerts: "mcp-tv-list-alerts",
+  log: "mcp-tv-get-alerts-log",
+  news: "mcp-tv-get-news",
+  cal: "mcp-tv-get-economic-calendar",
+};
+const QUOTE_MS = 120000, ALERT_MS = 300000, CAL_MS = 900000, WL_MS = 600000;
+const HOT_PCT = 0.3; // alert counts as "close" within 0.3% of price
+const CCY_COUNTRY = {USD:"US",EUR:"EU",JPY:"JP",GBP:"GB",AUD:"AU",NZD:"NZ",CAD:"CA",CHF:"CH",CNH:"CN",CNY:"CN",SEK:"SE",NOK:"NO",MXN:"MX",ZAR:"ZA",SGD:"SG",HKD:"HK"};
+const DENY = new Set(["needs_reauth","server_not_connected","selection_required","server_not_found","blocked_by_policy","approval_required","not_in_manifest","not_granted","capability_disabled","capability_removed","consent_required","user_changed"]);
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const S = {
+  mcp: null, symbols: [], wlName: "", wlErr: null,
+  bars: {}, barsAt: {}, barsErr: {}, unsubs: {},
+  alerts: null, alertsErr: null, log: null, logErr: null,
+  cal: null, calErr: null, calKey: "", calUnsub: null,
+  sheetSym: null, sheetInt: "1h",
+};
+
+/* ---------- helpers ---------- */
+const ticker = s => String(s).split(":").pop().toUpperCase();
+const exch = s => String(s).includes(":") ? String(s).split(":")[0] : "";
+const isFx = s => /^[A-Z]{6}$/.test(ticker(s)) && (CCY_COUNTRY[ticker(s).slice(0,3)] || CCY_COUNTRY[ticker(s).slice(3)]);
+const pretty = s => isFx(s) ? ticker(s).slice(0,3) + "/" + ticker(s).slice(3) : ticker(s);
+const pip = s => isFx(s) ? (ticker(s).endsWith("JPY") ? 0.01 : 0.0001) : null;
+function decimals(s, v){
+  if (isFx(s)) return ticker(s).endsWith("JPY") ? 3 : 5;
+  if (v == null) return 2;
+  const a = Math.abs(v);
+  return a < 1 ? 5 : a < 10 ? 4 : 2;
+}
+const fmt = (s, v) => v == null || !isFinite(v) ? "—" : Number(v).toLocaleString(undefined, {minimumFractionDigits: decimals(s, v), maximumFractionDigits: decimals(s, v)});
+const pct = v => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(2) + "%";
+const dirCls = v => v > 0 ? "up" : v < 0 ? "down" : "flat";
+const hm = t => new Date(t).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+function ago(t){
+  const m = Math.round((Date.now() - t) / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return m + " min ago";
+  const h = Math.round(m / 60);
+  return h < 24 ? h + " h ago" : Math.round(h / 24) + " d ago";
+}
+const stamp = r => (r && r.cache && r.cache.storedAt) || Date.now();
+
+function errText(e){
+  switch (e && e.code) {
+    case "needs_reauth": return "Your TradingView connection expired. Reconnect TradingView in claude.ai Settings → Connectors.";
+    case "server_not_connected":
+    case "server_not_found": return "TradingView isn't connected to your Claude account. Add it in claude.ai Settings → Connectors.";
+    case "selection_required": return "You have more than one TradingView connector. Pick one when Claude asks, then refresh.";
+    case "not_in_manifest":
+    case "consent_required": return "TradingView access is off for this page. Allow it from this page's Permissions menu, then refresh.";
+    case "blocked_by_policy":
+    case "approval_required": return "Your organization's policy blocks this TradingView tool here.";
+    case "not_granted":
+    case "capability_disabled":
+    case "capability_removed": return "Live connector data isn't available in this view. Open the page in the Claude app or on claude.ai.";
+    case "server_unavailable":
+    case "rate_limited": return "TradingView didn't answer in time. It tries again on the next refresh.";
+    case "tool_error": return "TradingView reported a problem: " + (e.message || "unknown error");
+    default: return (e && e.message) || "This section couldn't load.";
+  }
+}
+// The connector reports some failures (e.g. HTTP 429) as success:false inside a normal result.
+function payloadOf(result){
+  const p = result && result.payload;
+  if (p && typeof p === "object" && p.success === false) {
+    const msg = String(p.error || "TradingView returned an error");
+    throw {code: /\b429\b/.test(msg) ? "rate_limited" : "tool_error", message: /\b429\b/.test(msg) ? "TradingView is rate-limiting requests" : msg};
+  }
+  return p;
+}
+
+/* ---------- tabs ---------- */
+function showTab(name){
+  document.querySelectorAll("[data-panel]").forEach(p => p.hidden = p.dataset.panel !== name);
+  document.querySelectorAll("[data-tab]").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
+  try { localStorage.setItem("ptd.tab", name); } catch (e) {}
+  window.scrollTo(0, 0);
+}
+document.querySelectorAll("[data-tab]").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
+{
+  let t = (location.hash || "").slice(1);
+  if (!["watch","alerts","calendar"].includes(t)) { try { t = localStorage.getItem("ptd.tab") || "watch"; } catch (e) { t = "watch"; } }
+  showTab(["watch","alerts","calendar"].includes(t) ? t : "watch");
+}
+
+/* ---------- derived data ---------- */
+function quote(sym){
+  const b = S.bars[sym];
+  if (!b || !b.length) return null;
+  const last = b[b.length - 1].c, first = b[0].o ?? b[0].c;
+  return {last, chg: first ? (last - first) / first * 100 : 0, closes: b.map(x => x.c)};
+}
+function activeAlerts(){ return (S.alerts || []).filter(a => a.active !== false); }
+function alertsFor(sym){ const k = ticker(sym); return activeAlerts().filter(a => ticker(a.symbol) === k); }
+function priceFor(alertSym){
+  const k = ticker(alertSym);
+  const s = S.symbols.find(x => ticker(x) === k);
+  const q = s && quote(s);
+  return q ? q.last : null;
+}
+function dist(a, price){
+  if (price == null || a.threshold == null) return null;
+  const d = a.threshold - price;
+  const p = pip(a.symbol);
+  return {abs: d, pct: d / price * 100, pips: p ? d / p : null};
+}
+const distLabel = (a, d) => d.pips != null ? `${d.pips > 0 ? "+" : "−"}${Math.abs(d.pips).toFixed(1)} pips` : `${d.pct > 0 ? "+" : "−"}${Math.abs(d.pct).toFixed(2)}%`;
+function condLabel(c){
+  return c === "cross_up" ? "Crosses above" : c === "cross_down" ? "Crosses below" : c === "cross" ? "Crosses" : (c || "Condition").replace(/_/g, " ");
+}
+
+/* ---------- rendering ---------- */
+function spark(closes, cls){
+  if (!closes || closes.length < 2) return '<svg class="spark" viewBox="0 0 84 30" aria-hidden="true"></svg>';
+  const w = 84, h = 30, min = Math.min(...closes), max = Math.max(...closes), r = max - min || 1;
+  const pts = closes.map((v, i) => [i / (closes.length - 1) * (w - 4) + 2, h - 3 - (v - min) / r * (h - 6)]);
+  const line = pts.map(p => p.map(n => n.toFixed(1)).join(",")).join(" ");
+  const area = `2,${h} ${line} ${w - 2},${h}`;
+  const [lx, ly] = pts[pts.length - 1];
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" aria-hidden="true" style="color:var(--${cls === "flat" ? "muted" : cls})">
+    <polygon points="${area}" fill="currentColor" fill-opacity=".12"/>
+    <polyline points="${line}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+    <circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="2.2" fill="currentColor"/></svg>`;
+}
+
+function renderWatch(){
+  const el = $("watchList");
+  if (S.wlErr && !S.symbols.length) { el.innerHTML = `<div class="row"><div class="sym"><p class="err">${esc(errText(S.wlErr))}</p></div></div>`; return; }
+  if (!S.symbols.length) return;
+  el.innerHTML = S.symbols.map(sym => {
+    const q = quote(sym), err = S.barsErr[sym];
+    const cls = q ? dirCls(q.chg) : "flat";
+    let chip = "";
+    if (q) {
+      const near = alertsFor(sym).map(a => ({a, d: dist(a, q.last)})).filter(x => x.d).sort((x, y) => Math.abs(x.d.pct) - Math.abs(y.d.pct))[0];
+      if (near) {
+        const hot = Math.abs(near.d.pct) <= HOT_PCT;
+        chip = `<span class="chip num${hot ? " hot" : ""}">${near.d.abs > 0 ? "▲" : "▼"} ${fmt(sym, near.a.threshold)} · ${distLabel(near.a, near.d)}</span>`;
+      }
+    }
+    if (err && DENY.has(err.code)) chip = `<span class="chip">${esc(errText(err))}</span>`;
+    else if (err) chip = `<span class="chip">${q ? "Showing last data · " : ""}${esc(errText(err))}</span>`;
+    return `<button class="row" data-sym="${esc(sym)}" aria-label="${esc(pretty(sym))} details">
+      <div class="sym"><b>${esc(pretty(sym))}</b><small>${esc(exch(sym))}</small></div>
+      ${spark(q && q.closes, cls)}
+      <div class="px"><b>${q ? fmt(sym, q.last) : "—"}</b><small class="${cls}">${q ? pct(q.chg) : (err ? "No data" : "Loading")}</small></div>
+      ${chip}</button>`;
+  }).join("");
+  const times = S.symbols.map(s => S.barsAt[s]).filter(Boolean);
+  $("watchNote").textContent = times.length ? "Updated " + hm(Math.max(...times)) : "";
+  updateStatus();
+}
+$("watchList").addEventListener("click", e => { const r = e.target.closest("[data-sym]"); if (r) openSheet(r.dataset.sym); });
+
+function renderAlerts(){
+  if (S.alertsErr && !S.alerts) {
+    $("alertsNear").innerHTML = `<div class="card err">${esc(errText(S.alertsErr))}</div>`;
+    $("alertsOther").innerHTML = ""; $("alertSummary").innerHTML = "";
+  } else if (S.alerts) {
+    const act = activeAlerts();
+    const withD = act.map(a => ({a, d: dist(a, priceFor(a.symbol))}));
+    const near = withD.filter(x => x.d).sort((x, y) => Math.abs(x.d.pct) - Math.abs(y.d.pct));
+    const other = withD.filter(x => !x.d);
+    const hot = near.filter(x => Math.abs(x.d.pct) <= HOT_PCT).length;
+    const fired = S.log ? S.log.length : null;
+    $("alertSummary").innerHTML =
+      `<span class="pill"><b>${act.length}</b> active</span>` +
+      `<span class="pill"><b>${hot}</b> within ${HOT_PCT}%</span>` +
+      (fired != null ? `<span class="pill"><b>${fired}</b> fired in 7 days</span>` : "");
+    const badge = $("navBadge"); badge.hidden = !hot; badge.textContent = hot;
+    $("alertsNear").innerHTML = near.length ? near.map(({a, d}) => {
+      const isHot = Math.abs(d.pct) <= HOT_PCT;
+      const fill = Math.max(4, 100 - Math.min(100, Math.abs(d.pct) / 2 * 100));
+      return `<div class="card al${isHot ? " hot" : ""}">
+        <div class="t">${esc(a.name || `${pretty(a.symbol)} ${condLabel(a.condition_type).toLowerCase()} ${fmt(a.symbol, a.threshold)}`)}</div>
+        <div class="d ${isHot ? "" : "flat"}">${distLabel(a, d)}</div>
+        <div class="m">${esc(pretty(a.symbol))} · ${condLabel(a.condition_type)} <span class="num">${fmt(a.symbol, a.threshold)}</span> · now <span class="num">${fmt(a.symbol, priceFor(a.symbol))}</span></div>
+        <div class="meter" aria-hidden="true"><i style="width:${fill.toFixed(0)}%"></i></div></div>`;
+    }).join("") : `<div class="card skel">No active alerts on pairs in your watchlist.</div>`;
+    $("alertsOther").innerHTML = other.length ? other.map(({a}) => `<div class="card al">
+        <div class="t">${esc(a.name || pretty(a.symbol))}</div>
+        <div class="d num">${fmt(a.symbol, a.threshold)}</div>
+        <div class="m">${esc(a.symbol)} · ${condLabel(a.condition_type)}${a.expiration ? " · expires " + new Date(a.expiration).toLocaleDateString([], {month: "short", day: "numeric"}) : ""}${a.last_fire_time ? " · last fired " + ago(Date.parse(a.last_fire_time)) : ""}</div></div>`).join("")
+      : `<div class="card skel">Every active alert is on a watchlist pair.</div>`;
+    if (S.alertsErr) $("alertsNear").insertAdjacentHTML("afterbegin", `<p class="err">${esc(errText(S.alertsErr))}</p>`);
+  }
+  if (S.logErr && !S.log) $("alertLog").innerHTML = `<div class="card err">${esc(errText(S.logErr))}</div>`;
+  else if (S.log) {
+    $("alertLog").innerHTML = S.log.length ? S.log.map(ev => {
+      const code = ev.webhook && ev.webhook.http_code;
+      const bad = code && (code < 200 || code >= 300);
+      return `<div class="card al">
+        <div class="t">${esc(ev.message || ev.name || pretty(ev.symbol))}</div>
+        <div class="d flat">${ev.fired_at ? ago(Date.parse(ev.fired_at)) : ""}</div>
+        <div class="m">${esc(pretty(ev.symbol))} · ${ev.fired_at ? new Date(ev.fired_at).toLocaleString([], {weekday: "short", hour: "2-digit", minute: "2-digit"}) : ""}${code ? ` · <span class="${bad ? "fail" : ""}">webhook ${bad ? "failed" : "delivered"} (${code})</span>` : ""}</div></div>`;
+    }).join("") : `<div class="card skel">No alerts fired in the last 7 days.</div>`;
+    if (S.logErr) $("alertLog").insertAdjacentHTML("afterbegin", `<p class="err">${esc(errText(S.logErr))}</p>`);
+  }
+}
+
+function renderCal(){
+  const el = $("calList");
+  if (S.calErr && !S.cal) { el.innerHTML = `<div class="card err">${esc(errText(S.calErr))}</div>`; return; }
+  if (!S.cal) return;
+  const ccys = new Set(); S.symbols.filter(isFx).forEach(s => { ccys.add(ticker(s).slice(0,3)); ccys.add(ticker(s).slice(3)); });
+  const evs = S.cal.filter(e => !ccys.size || ccys.has(e.currency)).sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
+  if (!evs.length) { el.innerHTML = `<div class="card skel">No medium or high importance events for your currencies in the next two days.</div>`; return; }
+  const now = Date.now();
+  let html = "", day = "";
+  for (const e of evs) {
+    const t = Date.parse(e.date);
+    const d = new Date(t).toLocaleDateString([], {weekday: "long", month: "short", day: "numeric"});
+    if (d !== day) { html += `<h2>${esc(d)}</h2>`; day = d; }
+    const soon = t > now && t - now < 2 * 3600e3, past = t < now;
+    const unit = e.unit || "";
+    const v = x => x == null ? "—" : esc(x) + esc(unit);
+    const aff = S.symbols.filter(s => isFx(s) && ticker(s).includes(e.currency)).map(pretty);
+    const imp = Number(e.importance);
+    html += `<div class="card ev${soon ? " soon" : ""}${past ? " past" : ""}">
+      <div class="tm">${hm(t)}</div>
+      <div><span class="ccy">${esc(e.currency)}</span><b>${esc(e.title || e.indicator)}</b>${e.period ? ` <small class="flat">${esc(e.period)}</small>` : ""}<span class="imp" title="${imp >= 1 ? "High" : "Medium"} importance"><i class="on"></i><i class="${imp >= 0 ? "on" : ""}"></i><i class="${imp >= 1 ? "on" : ""}"></i></span>${soon ? ` <small class="up">in ${Math.round((t - now) / 60000)} min</small>` : ""}</div>
+      <div class="nums"><span>Actual <b>${v(e.actual)}</b></span><span>Fcst ${v(e.forecast)}</span><span>Prev ${v(e.previous)}</span></div>
+      ${aff.length ? `<div class="aff">Moves ${esc(aff.join(", "))}</div>` : ""}</div>`;
+  }
+  el.innerHTML = html;
+  if (S.calErr) el.insertAdjacentHTML("afterbegin", `<p class="err">${esc(errText(S.calErr))}</p>`);
+}
+
+function updateStatus(){
+  const dot = $("liveDot"), st = $("status");
+  const errs = S.symbols.filter(s => S.barsErr[s]);
+  if (S.wlErr && DENY.has(S.wlErr.code)) { dot.className = "dot bad"; st.textContent = "Not connected"; return; }
+  if (!S.symbols.length) return;
+  const ok = S.symbols.length - errs.length;
+  dot.className = "dot " + (ok ? "live" : "bad");
+  st.textContent = `${S.symbols.length} pairs · refreshes every ${QUOTE_MS / 60000} min` + (errs.length ? ` · ${errs.length} delayed` : "");
+}
+function pageBanner(msg){
+  const b = $("pageBanner");
+  b.hidden = !msg;
+  b.innerHTML = msg ? `<div class="banner bad">${esc(msg)}</div>` : "";
+}
+
+/* ---------- data wiring ---------- */
+function watchBars(sym){
+  if (S.unsubs[sym]) return;
+  S.unsubs[sym] = S.mcp.watchTool(SERVER, T.ohlcv, {symbol: sym, interval: "1h", count: 25}, ev => {
+    if (ev.type === "data") {
+      try {
+        const p = payloadOf(ev.result);
+        S.bars[sym] = (p && p.bars) || [];
+        S.barsAt[sym] = stamp(ev.result);
+        delete S.barsErr[sym];
+      } catch (e) { S.barsErr[sym] = e; }
+    } else {
+      S.barsErr[sym] = ev.error;
+      if (DENY.has(ev.error.code)) { delete S.bars[sym]; }
+    }
+    renderWatch(); renderAlerts();
+    if (S.sheetSym === sym) renderSheetHead();
+  }, {refetchInterval: QUOTE_MS, cache: {staleTime: 60000, gcTime: 3600000}});
+}
+function setSymbols(list){
+  const next = list.slice(0, 40);
+  for (const s of Object.keys(S.unsubs)) if (!next.includes(s)) { S.unsubs[s](); delete S.unsubs[s]; delete S.bars[s]; delete S.barsErr[s]; }
+  S.symbols = next;
+  next.forEach(watchBars);
+  renderWatch();
+  watchCalendar();
+}
+function watchCalendar(){
+  const ccys = [...new Set(S.symbols.filter(isFx).flatMap(s => [ticker(s).slice(0,3), ticker(s).slice(3)]))].sort();
+  const countries = [...new Set(ccys.map(c => CCY_COUNTRY[c]).filter(Boolean))];
+  const iso = d => d.toISOString().slice(0, 10);
+  const from = new Date(), to = new Date(Date.now() + 2 * 86400e3);
+  const input = {countries: (countries.length ? countries : ["US"]).join(","), min_importance: 0, date_from: iso(from), date_to: iso(to)};
+  const key = JSON.stringify(input);
+  if (key === S.calKey) return;
+  S.calKey = key;
+  if (S.calUnsub) S.calUnsub();
+  S.calUnsub = S.mcp.watchTool(SERVER, T.cal, input, ev => {
+    if (ev.type === "data") {
+      try { const p = payloadOf(ev.result); S.cal = (p && p.result) || []; S.calErr = null; $("calNote").textContent = "Updated " + hm(stamp(ev.result)); }
+      catch (e) { S.calErr = e; }
+    } else { S.calErr = ev.error; if (DENY.has(ev.error.code)) S.cal = null; }
+    renderCal();
+  }, {refetchInterval: CAL_MS, cache: {staleTime: 300000, gcTime: 3600000}});
+}
+
+async function boot(){
+  const mcp = window.claude && typeof window.claude.use === "function" ? await window.claude.use("mcp").catch(() => null) : null;
+  if (!mcp) {
+    $("liveDot").className = "dot bad"; $("status").textContent = "Offline";
+    pageBanner("Live TradingView data loads only when this page is opened on claude.ai or in the Claude app, signed in with the TradingView connector added.");
+    $("watchList").innerHTML = `<div class="row"><div class="sym"><b>No connection</b><small>Open in the Claude app to load your watchlist.</small></div></div>`;
+    $("alertsNear").innerHTML = `<div class="card skel">Alerts appear once TradingView is connected.</div>`;
+    $("alertLog").innerHTML = ""; $("calList").innerHTML = `<div class="card skel">Events appear once TradingView is connected.</div>`;
+    return;
+  }
+  S.mcp = mcp;
+
+  mcp.watchTool(SERVER, T.wl, null, ev => {
+    if (ev.type === "data") {
+      try {
+        const p = payloadOf(ev.result);
+        const wl = p && p.watchlist;
+        S.wlErr = null; pageBanner("");
+        S.wlName = (wl && wl.name) || "Watchlist";
+        $("wlName").textContent = S.wlName;
+        setSymbols((wl && wl.symbols) || []);
+        if (!S.symbols.length) $("watchList").innerHTML = `<div class="row"><div class="sym"><b>This watchlist is empty</b><small>Add symbols in TradingView and they show up here.</small></div></div>`;
+      } catch (e) { S.wlErr = e; renderWatch(); }
+    } else {
+      S.wlErr = ev.error;
+      if (DENY.has(ev.error.code)) { pageBanner(errText(ev.error)); setSymbols([]); S.wlErr = ev.error; }
+      renderWatch(); updateStatus();
+    }
+  }, {refetchInterval: WL_MS, cache: {staleTime: 120000, gcTime: 86400000}});
+
+  mcp.watchTool(SERVER, T.alerts, {active: true}, ev => {
+    if (ev.type === "data") {
+      try { const p = payloadOf(ev.result); S.alerts = (p && p.alerts) || []; S.alertsErr = null; $("alertsNote").textContent = "Updated " + hm(stamp(ev.result)); }
+      catch (e) { S.alertsErr = e; }
+    } else { S.alertsErr = ev.error; if (DENY.has(ev.error.code)) S.alerts = null; }
+    renderAlerts(); renderWatch();
+  }, {refetchInterval: ALERT_MS, cache: {staleTime: 60000, gcTime: 3600000}});
+
+  mcp.watchTool(SERVER, T.log, {days: 7, limit: 50}, ev => {
+    if (ev.type === "data") {
+      try {
+        const p = payloadOf(ev.result);
+        S.log = ((p && p.events) || []).slice().sort((a, b) => Date.parse(b.fired_at) - Date.parse(a.fired_at));
+        S.logErr = null; $("logNote").textContent = "Updated " + hm(stamp(ev.result));
+      } catch (e) { S.logErr = e; }
+    } else { S.logErr = ev.error; if (DENY.has(ev.error.code)) S.log = null; }
+    renderAlerts();
+  }, {refetchInterval: ALERT_MS, cache: {staleTime: 60000, gcTime: 3600000}});
+}
+
+/* ---------- refresh + wake lock ---------- */
+$("refreshBtn").addEventListener("click", async () => {
+  if (!S.mcp) return;
+  const b = $("refreshBtn"); b.classList.add("spin");
+  try { await S.mcp.invalidate(SERVER); } catch (e) {}
+  setTimeout(() => b.classList.remove("spin"), 1200);
+});
+let lock = null, wantLock = false;
+async function takeLock(){
+  try { lock = await navigator.wakeLock.request("screen"); lock.addEventListener("release", () => { lock = null; if (!wantLock) $("wakeBtn").setAttribute("aria-pressed", "false"); }); return true; }
+  catch (e) { return false; }
+}
+$("wakeBtn").addEventListener("click", async () => {
+  const b = $("wakeBtn");
+  if (wantLock) { wantLock = false; b.setAttribute("aria-pressed", "false"); if (lock) lock.release().catch(() => {}); return; }
+  if (!("wakeLock" in navigator)) { b.title = "This device doesn't allow keeping the screen on from a web page"; return; }
+  wantLock = await takeLock();
+  b.setAttribute("aria-pressed", String(wantLock));
+});
+document.addEventListener("visibilitychange", () => { if (wantLock && !lock && document.visibilityState === "visible") takeLock(); });
+
+/* ---------- detail sheet ---------- */
+const INTS = {"1h": 48, "4h": 60, "1D": 90};
+function openSheet(sym){
+  S.sheetSym = sym;
+  const sh = $("sheet");
+  sh.innerHTML = `<div class="close"><div class="grab"></div></div>
+    <div class="sh-head" id="shHead"></div>
+    <div class="seg" role="group" aria-label="Chart timeframe">${Object.keys(INTS).map(k => `<button data-int="${k}" aria-pressed="${k === S.sheetInt}">${k}</button>`).join("")}</div>
+    <div id="shChart"><svg class="chart"></svg></div>
+    <h2>Alerts on this pair</h2><div class="stack" id="shAlerts"></div>
+    <h2>News</h2><div class="card news" id="shNews"><span class="skel">Loading headlines…</span></div>
+    <p class="note"><button id="shClose" class="pill">Close</button></p>`;
+  $("scrim").hidden = false; sh.hidden = false; sh.scrollTop = 0;
+  document.body.style.overflow = "hidden";
+  renderSheetHead(); loadChart(); loadNews(sym);
+  sh.querySelector(".seg").addEventListener("click", e => {
+    const b = e.target.closest("[data-int]"); if (!b) return;
+    S.sheetInt = b.dataset.int;
+    sh.querySelectorAll("[data-int]").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+    loadChart();
+  });
+  $("shClose").addEventListener("click", closeSheet);
+  $("shClose").focus({preventScroll: true});
+}
+function closeSheet(){ S.sheetSym = null; $("sheet").hidden = true; $("scrim").hidden = true; document.body.style.overflow = ""; }
+$("scrim").addEventListener("click", closeSheet);
+document.addEventListener("keydown", e => { if (e.key === "Escape" && S.sheetSym) closeSheet(); });
+
+function renderSheetHead(){
+  const sym = S.sheetSym; if (!sym) return;
+  const q = quote(sym);
+  $("shHead").innerHTML = `<div><h3 id="shTitle">${esc(pretty(sym))}</h3><small class="flat">${esc(sym)}</small></div>
+    <div class="p"><b>${q ? fmt(sym, q.last) : "—"}</b><small class="num ${q ? dirCls(q.chg) : "flat"}">${q ? pct(q.chg) + " · 24h" : ""}</small></div>`;
+  const al = alertsFor(sym);
+  $("shAlerts").innerHTML = al.length ? al.map(a => { const d = q && dist(a, q.last); return `<div class="card al">
+      <div class="t">${condLabel(a.condition_type)} <span class="num">${fmt(sym, a.threshold)}</span></div>
+      <div class="d ${d && Math.abs(d.pct) <= HOT_PCT ? "" : "flat"}">${d ? distLabel(a, d) : ""}</div>
+      ${a.name ? `<div class="m">${esc(a.name)}</div>` : ""}</div>`; }).join("")
+    : `<div class="card skel">No active alerts on ${esc(pretty(sym))}.</div>`;
+}
+
+async function loadChart(){
+  const sym = S.sheetSym, int = S.sheetInt;
+  const box = $("shChart");
+  box.innerHTML = `<svg class="chart"></svg><p class="note">Loading ${int} bars…</p>`;
+  try {
+    const r = await S.mcp.callTool(SERVER, T.ohlcv, {symbol: sym, interval: int, count: INTS[int]}, {cache: {staleTime: 60000, gcTime: 3600000}});
+    if (S.sheetSym !== sym || S.sheetInt !== int) return;
+    const p = payloadOf(r);
+    drawChart(box, sym, (p && p.bars) || [], stamp(r));
+  } catch (e) {
+    if (S.sheetSym !== sym) return;
+    box.innerHTML = `<p class="err">${esc(errText(e))}</p>`;
+  }
+}
+function drawChart(box, sym, bars, at){
+  if (bars.length < 2) { box.innerHTML = `<p class="note">Not enough bars to draw a chart.</p>`; return; }
+  const W = Math.max(280, box.clientWidth || 340), H = 230, padL = 4, padR = 62, padT = 10, padB = 22;
+  const closes = bars.map(b => b.c);
+  let lo = Math.min(...bars.map(b => b.l ?? b.c)), hi = Math.max(...bars.map(b => b.h ?? b.c));
+  const span = hi - lo || hi * 0.001 || 1;
+  const al = alertsFor(sym).filter(a => a.threshold != null);
+  const shown = al.filter(a => a.threshold >= lo - span * 0.6 && a.threshold <= hi + span * 0.6);
+  const off = al.filter(a => !shown.includes(a));
+  shown.forEach(a => { lo = Math.min(lo, a.threshold); hi = Math.max(hi, a.threshold); });
+  const pad = (hi - lo) * 0.06 || span * 0.06; lo -= pad; hi += pad;
+  const x = i => padL + i / (bars.length - 1) * (W - padL - padR);
+  const y = v => padT + (hi - v) / (hi - lo) * (H - padT - padB);
+  const line = closes.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const chg = closes[closes.length - 1] - closes[0];
+  const col = `var(--${chg >= 0 ? "up" : "down"})`;
+  let grid = "";
+  for (let k = 0; k <= 4; k++) {
+    const v = lo + (hi - lo) * k / 4;
+    grid += `<line x1="${padL}" x2="${W - padR}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="var(--line)" stroke-width="1"/>
+      <text x="${W - padR + 6}" y="${(y(v) + 3.5).toFixed(1)}">${fmt(sym, v)}</text>`;
+  }
+  const lines = shown.map(a => `<line x1="${padL}" x2="${W - padR}" y1="${y(a.threshold).toFixed(1)}" y2="${y(a.threshold).toFixed(1)}" stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="4 3"/>
+      <text class="al-l" x="${padL + 4}" y="${(y(a.threshold) - 4).toFixed(1)}">${a.condition_type === "cross_down" ? "▼" : a.condition_type === "cross_up" ? "▲" : "◆"} ${fmt(sym, a.threshold)}</text>`).join("");
+  const t0 = new Date(bars[0].t * 1000), t1 = new Date(bars[bars.length - 1].t * 1000);
+  const dl = d => S.sheetInt === "1D" ? d.toLocaleDateString([], {month: "short", day: "numeric"}) : d.toLocaleString([], {weekday: "short", hour: "2-digit", minute: "2-digit"});
+  const lx = x(bars.length - 1), ly = y(closes[closes.length - 1]);
+  box.innerHTML = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(pretty(sym))} ${S.sheetInt} chart">
+    ${grid}
+    <polygon points="${padL},${H - padB} ${line} ${x(bars.length - 1).toFixed(1)},${H - padB}" fill="${col}" fill-opacity=".1"/>
+    <polyline points="${line}" fill="none" stroke="${col}" stroke-width="1.8" stroke-linejoin="round"/>
+    ${lines}
+    <circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="3.5" fill="${col}"/>
+    <text x="${padL}" y="${H - 6}">${esc(dl(t0))}</text>
+    <text x="${W - padR}" y="${H - 6}" text-anchor="end">${esc(dl(t1))}</text>
+  </svg>
+  <p class="note">${bars.length} × ${S.sheetInt} bars · fetched ${hm(at)}${off.length ? ` · off-chart alerts: ${off.map(a => fmt(sym, a.threshold)).join(", ")}` : ""}</p>`;
+}
+
+async function loadNews(sym){
+  const el = $("shNews");
+  try {
+    const r = await S.mcp.callTool(SERVER, T.news, {symbol: sym, limit: 8}, {cache: {staleTime: 300000, gcTime: 3600000}});
+    if (S.sheetSym !== sym) return;
+    const p = payloadOf(r);
+    const hs = (p && p.data && p.data.headlines) || [];
+    el.innerHTML = hs.length ? hs.map(h => `<a href="${esc(h.link || ("https://www.tradingview.com" + (h.storyPath || "")))}" target="_blank" rel="noopener">
+        ${h.urgency === 1 ? '<b class="up">Top · </b>' : ""}${esc(h.title)}
+        <small>${esc((h.provider && h.provider.name) || "")}${h.published ? " · " + ago(h.published * 1000) : ""}${h.paywall ? " · paywalled" : ""}</small></a>`).join("")
+      : `<span class="skel">No recent headlines for ${esc(pretty(sym))}.</span>`;
+  } catch (e) {
+    if (S.sheetSym !== sym) return;
+    el.innerHTML = `<span class="err">${esc(errText(e))}</span>`;
+  }
+}
+
+// keep relative times fresh
+setInterval(() => { renderAlerts(); renderCal(); }, 60000);
+boot();
+})();
+</script>
