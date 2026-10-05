@@ -100,7 +100,7 @@ h2 span{letter-spacing:0;text-transform:none;font-weight:500}
 
 /* bottom nav */
 nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px);display:flex;justify-content:center}
-nav.tabs .in{display:grid;grid-template-columns:repeat(3,1fr);width:100%;max-width:640px}
+nav.tabs .in{display:grid;grid-template-columns:repeat(4,1fr);width:100%;max-width:640px}
 nav.tabs button{height:var(--nav-h);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11.5px;font-weight:600;color:var(--muted)}
 nav.tabs button svg{width:22px;height:22px}
 nav.tabs button[aria-selected="true"]{color:var(--accent)}
@@ -124,6 +124,18 @@ nav.tabs button[aria-selected="true"]{color:var(--accent)}
 .news a:first-child{border-top:0;padding-top:0}
 .news small{color:var(--muted);display:block;margin-top:2px}
 .close{position:sticky;top:0}
+.filters{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-inline:-16px;padding-inline:16px;scrollbar-width:none}
+.filters::-webkit-scrollbar{display:none}
+.fchip{flex:none;padding:7px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);font:500 13px var(--f-data);color:var(--muted)}
+.fchip[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.fchip .n{opacity:.7;margin-left:4px}
+.nitem{display:block;color:var(--fg);text-decoration:none}
+.nitem .h{font-weight:600;line-height:1.35;overflow-wrap:anywhere}
+.nitem .meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;font-size:12px;color:var(--muted)}
+.tag{font:600 11px/1 var(--f-data);padding:4px 6px;border-radius:4px;background:var(--raised);border:1px solid var(--line);color:var(--fg)}
+.tag.top{background:var(--down);border-color:var(--down);color:#fff}
+.tag.new{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.nitem.fresh{border-color:var(--accent)}
 .statusbtn{display:inline-flex;gap:8px;align-items:center;color:var(--muted);font-size:12.5px;text-decoration:underline dotted;text-underline-offset:3px}
 .diag{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 12px;font-size:13.5px;margin:0}
 .diag dt{color:var(--muted)}
@@ -179,6 +191,13 @@ nav.tabs button[aria-selected="true"]{color:var(--accent)}
     <div class="stack" id="calList"><div class="card skel">Loading events for your currencies…</div></div>
     <p class="note">Medium and high importance events for the currencies in your watchlist, today and the next two days. Times are in your local time zone.</p>
   </section>
+
+  <section id="p-news" data-panel="news" hidden>
+    <h2>News for your pairs <span id="newsNote"></span></h2>
+    <div class="filters" id="newsFilters" role="group" aria-label="Filter news by pair"></div>
+    <div class="stack" id="newsList" style="margin-top:10px"><div class="card skel">Loading headlines for your watchlist pairs…</div></div>
+    <p class="note">Headlines from TradingView's news feed for each pair in your watchlist. Each story is tagged with every one of your pairs it mentions. Top stories are marked by the publisher. Paywalled stories show only the headline.</p>
+  </section>
 </main>
 
 <nav class="tabs" aria-label="Sections"><div class="in" role="tablist">
@@ -188,6 +207,8 @@ nav.tabs button[aria-selected="true"]{color:var(--accent)}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span>Alerts<span class="badge" id="navBadge" hidden></span></span></button>
   <button role="tab" data-tab="calendar" aria-selected="false">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Calendar</button>
+  <button role="tab" data-tab="news" aria-selected="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h13v14a2 2 0 0 0 2 2H6a2 2 0 0 1-2-2z"/><path d="M17 9h3v10a2 2 0 0 1-2 2"/><path d="M8 9h5M8 13h5M8 17h3"/></svg><span>News<span class="badge" id="newsBadge" hidden></span></span></button>
 </div></nav>
 
 <div class="scrim" id="scrim" hidden></div>
@@ -204,7 +225,7 @@ const T = {
   news: "mcp-tv-get-news",
   cal: "mcp-tv-get-economic-calendar",
 };
-const QUOTE_MS = 120000, ALERT_MS = 300000, CAL_MS = 900000, WL_MS = 600000;
+const QUOTE_MS = 120000, ALERT_MS = 300000, CAL_MS = 900000, WL_MS = 600000, NEWS_MS = 600000;
 const HOT_PCT = 0.3; // alert counts as "close" within 0.3% of price
 const CCY_COUNTRY = {USD:"US",EUR:"EU",JPY:"JP",GBP:"GB",AUD:"AU",NZD:"NZ",CAD:"CA",CHF:"CH",CNH:"CN",CNY:"CN",SEK:"SE",NOK:"NO",MXN:"MX",ZAR:"ZA",SGD:"SG",HKD:"HK"};
 const DENY = new Set(["needs_reauth","server_not_connected","selection_required","server_not_found","blocked_by_policy","approval_required","not_in_manifest","not_granted","capability_disabled","capability_removed","consent_required","user_changed"]);
@@ -217,6 +238,7 @@ const S = {
   alerts: null, alertsErr: null, log: null, logErr: null,
   cal: null, calErr: null, calKey: "", calUnsub: null,
   sheetSym: null, sheetInt: "1h", diagOpen: false,
+  news: {}, newsAt: {}, newsErr: {}, newsUnsubs: {}, newsFilter: "all",
 };
 
 /* ---------- diagnostics log ---------- */
@@ -315,8 +337,9 @@ function showTab(name){
 document.querySelectorAll("[data-tab]").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
 {
   let t = (location.hash || "").slice(1);
-  if (!["watch","alerts","calendar"].includes(t)) { try { t = localStorage.getItem("ptd.tab") || "watch"; } catch (e) { t = "watch"; } }
-  showTab(["watch","alerts","calendar"].includes(t) ? t : "watch");
+  const TABS = ["watch","alerts","calendar","news"];
+  if (!TABS.includes(t)) { try { t = localStorage.getItem("ptd.tab") || "watch"; } catch (e) { t = "watch"; } }
+  showTab(TABS.includes(t) ? t : "watch");
 }
 
 /* ---------- derived data ---------- */
@@ -501,11 +524,82 @@ function watchBars(sym){
 function setSymbols(list){
   const next = list.slice(0, 40);
   for (const s of Object.keys(S.unsubs)) if (!next.includes(s)) { S.unsubs[s](); delete S.unsubs[s]; delete S.bars[s]; delete S.barsErr[s]; }
+  for (const s of Object.keys(S.newsUnsubs)) if (!next.includes(s)) { S.newsUnsubs[s](); delete S.newsUnsubs[s]; delete S.news[s]; delete S.newsErr[s]; }
   S.symbols = next;
   next.forEach((s, i) => setTimeout(() => { if (S.symbols.includes(s)) watchBars(s); }, i * 400));
-  renderWatch();
+  // news starts after the price bars so the two bursts don't overlap
+  next.forEach((s, i) => setTimeout(() => { if (S.symbols.includes(s)) watchNews(s); }, 3000 + i * 700));
+  renderWatch(); renderNews();
   watchCalendar();
 }
+function watchNews(sym){
+  if (S.newsUnsubs[sym]) return;
+  S.newsUnsubs[sym] = watch(T.news, {symbol: sym, limit: 15}, ev => {
+    if (ev.type === "data") {
+      try {
+        const p = payloadOf(ev.result);
+        S.news[sym] = (p && p.data && p.data.headlines) || [];
+        S.newsAt[sym] = stamp(ev.result);
+        delete S.newsErr[sym];
+      } catch (e) { S.newsErr[sym] = e; }
+    } else {
+      S.newsErr[sym] = ev.error;
+      if (DENY.has(ev.error.code)) delete S.news[sym];
+    }
+    renderNews();
+  }, {refetchInterval: NEWS_MS, cache: {staleTime: 300000, gcTime: 3600000}});
+}
+function mergedNews(){
+  const byId = new Map();
+  const mine = new Map(S.symbols.map(s => [ticker(s), s]));
+  for (const sym of S.symbols) for (const h of (S.news[sym] || [])) {
+    const key = h.id || h.link || h.title;
+    let it = byId.get(key);
+    if (!it) { it = {h, pairs: new Set()}; byId.set(key, it); }
+    it.pairs.add(sym);
+    for (const r of (h.relatedSymbols || [])) { const m = mine.get(ticker(r.symbol || "")); if (m) it.pairs.add(m); }
+  }
+  return [...byId.values()].sort((a, b) => (b.h.published || 0) - (a.h.published || 0));
+}
+function renderNews(){
+  const list = $("newsList"), fl = $("newsFilters");
+  if (!S.symbols.length) return;
+  const items = mergedNews();
+  const counts = {}; items.forEach(it => it.pairs.forEach(p => counts[p] = (counts[p] || 0) + 1));
+  if (S.newsFilter !== "all" && S.newsFilter !== "top" && !S.symbols.includes(S.newsFilter)) S.newsFilter = "all";
+  const topN = items.filter(it => it.h.urgency === 1).length;
+  fl.innerHTML = `<button class="fchip" data-f="all" aria-pressed="${S.newsFilter === "all"}">All<span class="n">${items.length}</span></button>` +
+    `<button class="fchip" data-f="top" aria-pressed="${S.newsFilter === "top"}">Top<span class="n">${topN}</span></button>` +
+    S.symbols.map(s => `<button class="fchip" data-f="${esc(s)}" aria-pressed="${S.newsFilter === s}">${esc(pretty(s))}<span class="n">${counts[s] || 0}</span></button>`).join("");
+  const shown = items.filter(it => S.newsFilter === "all" ? true : S.newsFilter === "top" ? it.h.urgency === 1 : it.pairs.has(S.newsFilter)).slice(0, 60);
+  const now = Date.now();
+  const fresh = items.filter(it => it.h.published && now - it.h.published * 1000 < 3600e3).length;
+  const badge = $("newsBadge"); badge.hidden = !fresh; badge.textContent = fresh;
+  const errs = S.symbols.filter(s => S.newsErr[s]);
+  const loaded = S.symbols.filter(s => S.news[s]).length;
+  let html = "";
+  if (errs.length) {
+    const e = S.newsErr[errs[0]];
+    html += `<p class="err">${errs.length === S.symbols.length ? "" : `News for ${esc(errs.map(pretty).join(", "))}: `}${esc(errText(e))}</p>`;
+  }
+  if (!items.length) html += `<div class="card skel">${loaded ? "No recent headlines for your pairs." : errs.length ? "No headlines loaded." : "Loading headlines for your watchlist pairs…"}</div>`;
+  else if (!shown.length) html += `<div class="card skel">No headlines match this filter.</div>`;
+  html += shown.map(({h, pairs}) => {
+    const t = (h.published || 0) * 1000, isNew = t && now - t < 3600e3;
+    const url = h.link || (h.storyPath ? "https://www.tradingview.com" + h.storyPath : "");
+    const body = `<div class="h">${esc(h.title)}</div>
+      <div class="meta">${h.urgency === 1 ? '<span class="tag top">TOP</span>' : ""}${isNew ? '<span class="tag new">NEW</span>' : ""}${[...pairs].map(p => `<span class="tag">${esc(pretty(p))}</span>`).join("")}
+        <span>${esc((h.provider && h.provider.name) || "")}${t ? " · " + ago(t) + " · " + new Date(t).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}) : ""}${h.paywall ? " · paywalled" : ""}</span></div>`;
+    return url ? `<a class="card nitem${isNew ? " fresh" : ""}" href="${esc(url)}" target="_blank" rel="noopener">${body}</a>` : `<div class="card nitem">${body}</div>`;
+  }).join("");
+  list.innerHTML = html;
+  const times = S.symbols.map(s => S.newsAt[s]).filter(Boolean);
+  $("newsNote").textContent = times.length ? "Updated " + hm(Math.max(...times)) : "";
+}
+$("newsFilters").addEventListener("click", e => {
+  const b = e.target.closest("[data-f]"); if (!b) return;
+  S.newsFilter = b.dataset.f; renderNews();
+});
 function watchCalendar(){
   const ccys = [...new Set(S.symbols.filter(isFx).flatMap(s => [ticker(s).slice(0,3), ticker(s).slice(3)]))].sort();
   const countries = [...new Set(ccys.map(c => CCY_COUNTRY[c]).filter(Boolean))];
@@ -535,6 +629,7 @@ async function boot(){
     $("watchList").innerHTML = `<div class="row"><div class="sym"><b>No connection</b><small>Open in the Claude app to load your watchlist.</small></div></div>`;
     $("alertsNear").innerHTML = `<div class="card skel">Alerts appear once TradingView is connected.</div>`;
     $("alertLog").innerHTML = ""; $("calList").innerHTML = `<div class="card skel">Events appear once TradingView is connected.</div>`;
+    $("newsList").innerHTML = `<div class="card skel">Headlines appear once TradingView is connected.</div>`;
     return;
   }
   S.mcp = mcp;
@@ -826,7 +921,7 @@ async function copyReport(){
 }
 
 // keep relative times fresh
-setInterval(() => { renderAlerts(); renderCal(); }, 60000);
+setInterval(() => { renderAlerts(); renderCal(); renderNews(); }, 60000);
 boot();
 })();
 </script>
