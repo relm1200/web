@@ -124,13 +124,26 @@ nav.tabs button[aria-selected="true"]{color:var(--accent)}
 .news a:first-child{border-top:0;padding-top:0}
 .news small{color:var(--muted);display:block;margin-top:2px}
 .close{position:sticky;top:0}
+.statusbtn{display:inline-flex;gap:8px;align-items:center;color:var(--muted);font-size:12.5px;text-decoration:underline dotted;text-underline-offset:3px}
+.diag{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 12px;font-size:13.5px;margin:0}
+.diag dt{color:var(--muted)}
+.diag dd{margin:0;overflow-wrap:anywhere}
+.ok{color:var(--up);font-weight:600} .no{color:var(--down);font-weight:600}
+.logbox{max-height:260px;overflow:auto;font:12px/1.5 var(--f-data);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px;overflow-wrap:anywhere}
+.logbox div+div{border-top:1px solid var(--line);padding-top:4px;margin-top:4px}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.btn{padding:9px 14px;border-radius:10px;border:1px solid var(--line);background:var(--surface);font-weight:600;font-size:14px}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn:disabled{opacity:.6}
+.fix{margin-top:12px;padding:12px 14px;border-radius:10px;border:1px solid var(--accent);background:var(--surface);font-size:14px}
+#copyArea{width:100%;height:120px;font:11px var(--f-data);background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:8px;margin-top:8px}
 @media (prefers-reduced-motion:reduce){.spin svg{animation:none}}
 </style>
 
 <header>
   <div class="id">
     <h1 id="wlName">Pocket Trade Desk</h1>
-    <div class="sub"><span class="dot" id="liveDot"></span><span id="status">Connecting to TradingView…</span></div>
+    <div class="sub"><button class="statusbtn" id="statusBtn" aria-label="Connection details"><span class="dot" id="liveDot"></span><span id="status">Connecting to TradingView…</span></button></div>
   </div>
   <button class="iconbtn" id="wakeBtn" aria-pressed="false" title="Keep screen on" aria-label="Keep screen on">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg>
@@ -203,8 +216,40 @@ const S = {
   bars: {}, barsAt: {}, barsErr: {}, unsubs: {},
   alerts: null, alertsErr: null, log: null, logErr: null,
   cal: null, calErr: null, calKey: "", calUnsub: null,
-  sheetSym: null, sheetInt: "1h",
+  sheetSym: null, sheetInt: "1h", diagOpen: false,
 };
+
+/* ---------- diagnostics log ---------- */
+const D = {hasClaude: !!(window.claude && typeof window.claude.use === "function"), useMs: null, mcpOk: null, ua: navigator.userAgent, framed: window.top !== window.self};
+const LOG = [];
+function logEv(tool, ok, detail, ms){
+  LOG.unshift({t: Date.now(), tool, ok, detail: String(detail || "").slice(0, 300), ms});
+  if (LOG.length > 60) LOG.pop();
+  if (S.diagOpen) renderDiagLog();
+}
+const short = tool => tool.replace(/^mcp-(tv|watchlist)-/, "");
+const errLine = e => (e && e.code ? e.code : "error") + (e && e.message ? ": " + e.message : "") + (e && e.retryable ? " (retryable)" : "");
+function watch(tool, input, handler, opts){
+  const t0 = Date.now(); let first = true;
+  return S.mcp.watchTool(SERVER, tool, input, ev => {
+    const ms = first ? Date.now() - t0 : null; first = false;
+    if (ev.type === "data") {
+      const p = ev.result && ev.result.payload;
+      const bad = p && typeof p === "object" && p.success === false;
+      logEv(short(tool), !bad, bad ? "success:false " + (p.error || "") : (ev.result.cache ? "cached from " + hm(ev.result.cache.storedAt) : "fresh"), ms);
+    } else logEv(short(tool), false, errLine(ev.error), ms);
+    handler(ev);
+  }, opts);
+}
+async function call(tool, input, opts){
+  const t0 = Date.now();
+  try {
+    const r = await S.mcp.callTool(SERVER, tool, input, opts);
+    const p = r && r.payload, bad = p && typeof p === "object" && p.success === false;
+    logEv(short(tool), !bad, bad ? "success:false " + (p.error || "") : "ok", Date.now() - t0);
+    return r;
+  } catch (e) { logEv(short(tool), false, errLine(e), Date.now() - t0); throw e; }
+}
 
 /* ---------- helpers ---------- */
 const ticker = s => String(s).split(":").pop().toUpperCase();
@@ -429,13 +474,15 @@ function updateStatus(){
 function pageBanner(msg){
   const b = $("pageBanner");
   b.hidden = !msg;
-  b.innerHTML = msg ? `<div class="banner bad">${esc(msg)}</div>` : "";
+  b.innerHTML = msg ? `<div class="banner bad">${esc(msg)}<div class="actions"><button class="btn" data-diag>Diagnose connection</button></div></div>` : "";
 }
+$("pageBanner").addEventListener("click", e => { if (e.target.closest("[data-diag]")) openDiag(); });
+$("statusBtn").addEventListener("click", () => openDiag());
 
 /* ---------- data wiring ---------- */
 function watchBars(sym){
   if (S.unsubs[sym]) return;
-  S.unsubs[sym] = S.mcp.watchTool(SERVER, T.ohlcv, {symbol: sym, interval: "1h", count: 25}, ev => {
+  S.unsubs[sym] = watch(T.ohlcv, {symbol: sym, interval: "1h", count: 25}, ev => {
     if (ev.type === "data") {
       try {
         const p = payloadOf(ev.result);
@@ -455,7 +502,7 @@ function setSymbols(list){
   const next = list.slice(0, 40);
   for (const s of Object.keys(S.unsubs)) if (!next.includes(s)) { S.unsubs[s](); delete S.unsubs[s]; delete S.bars[s]; delete S.barsErr[s]; }
   S.symbols = next;
-  next.forEach(watchBars);
+  next.forEach((s, i) => setTimeout(() => { if (S.symbols.includes(s)) watchBars(s); }, i * 400));
   renderWatch();
   watchCalendar();
 }
@@ -469,7 +516,7 @@ function watchCalendar(){
   if (key === S.calKey) return;
   S.calKey = key;
   if (S.calUnsub) S.calUnsub();
-  S.calUnsub = S.mcp.watchTool(SERVER, T.cal, input, ev => {
+  S.calUnsub = watch(T.cal, input, ev => {
     if (ev.type === "data") {
       try { const p = payloadOf(ev.result); S.cal = (p && p.result) || []; S.calErr = null; $("calNote").textContent = "Updated " + hm(stamp(ev.result)); }
       catch (e) { S.calErr = e; }
@@ -479,7 +526,9 @@ function watchCalendar(){
 }
 
 async function boot(){
-  const mcp = window.claude && typeof window.claude.use === "function" ? await window.claude.use("mcp").catch(() => null) : null;
+  const t0 = Date.now();
+  const mcp = D.hasClaude ? await window.claude.use("mcp").catch(() => null) : null;
+  D.useMs = Date.now() - t0; D.mcpOk = !!mcp;
   if (!mcp) {
     $("liveDot").className = "dot bad"; $("status").textContent = "Offline";
     pageBanner("Live TradingView data loads only when this page is opened on claude.ai or in the Claude app, signed in with the TradingView connector added.");
@@ -490,7 +539,7 @@ async function boot(){
   }
   S.mcp = mcp;
 
-  mcp.watchTool(SERVER, T.wl, null, ev => {
+  watch(T.wl, null, ev => {
     if (ev.type === "data") {
       try {
         const p = payloadOf(ev.result);
@@ -508,7 +557,7 @@ async function boot(){
     }
   }, {refetchInterval: WL_MS, cache: {staleTime: 120000, gcTime: 86400000}});
 
-  mcp.watchTool(SERVER, T.alerts, {active: true}, ev => {
+  watch(T.alerts, {active: true}, ev => {
     if (ev.type === "data") {
       try { const p = payloadOf(ev.result); S.alerts = (p && p.alerts) || []; S.alertsErr = null; $("alertsNote").textContent = "Updated " + hm(stamp(ev.result)); }
       catch (e) { S.alertsErr = e; }
@@ -516,7 +565,7 @@ async function boot(){
     renderAlerts(); renderWatch();
   }, {refetchInterval: ALERT_MS, cache: {staleTime: 60000, gcTime: 3600000}});
 
-  mcp.watchTool(SERVER, T.log, {days: 7, limit: 50}, ev => {
+  watch(T.log, {days: 7, limit: 50}, ev => {
     if (ev.type === "data") {
       try {
         const p = payloadOf(ev.result);
@@ -552,7 +601,7 @@ document.addEventListener("visibilitychange", () => { if (wantLock && !lock && d
 /* ---------- detail sheet ---------- */
 const INTS = {"1h": 48, "4h": 60, "1D": 90};
 function openSheet(sym){
-  S.sheetSym = sym;
+  S.sheetSym = sym; S.diagOpen = false;
   const sh = $("sheet");
   sh.innerHTML = `<div class="close"><div class="grab"></div></div>
     <div class="sh-head" id="shHead"></div>
@@ -573,7 +622,7 @@ function openSheet(sym){
   $("shClose").addEventListener("click", closeSheet);
   $("shClose").focus({preventScroll: true});
 }
-function closeSheet(){ S.sheetSym = null; $("sheet").hidden = true; $("scrim").hidden = true; document.body.style.overflow = ""; }
+function closeSheet(){ S.sheetSym = null; S.diagOpen = false; $("sheet").hidden = true; $("scrim").hidden = true; document.body.style.overflow = ""; }
 $("scrim").addEventListener("click", closeSheet);
 document.addEventListener("keydown", e => { if (e.key === "Escape" && S.sheetSym) closeSheet(); });
 
@@ -595,7 +644,7 @@ async function loadChart(){
   const box = $("shChart");
   box.innerHTML = `<svg class="chart"></svg><p class="note">Loading ${int} bars…</p>`;
   try {
-    const r = await S.mcp.callTool(SERVER, T.ohlcv, {symbol: sym, interval: int, count: INTS[int]}, {cache: {staleTime: 60000, gcTime: 3600000}});
+    const r = await call(T.ohlcv, {symbol: sym, interval: int, count: INTS[int]}, {cache: {staleTime: 60000, gcTime: 3600000}});
     if (S.sheetSym !== sym || S.sheetInt !== int) return;
     const p = payloadOf(r);
     drawChart(box, sym, (p && p.bars) || [], stamp(r));
@@ -646,7 +695,7 @@ function drawChart(box, sym, bars, at){
 async function loadNews(sym){
   const el = $("shNews");
   try {
-    const r = await S.mcp.callTool(SERVER, T.news, {symbol: sym, limit: 8}, {cache: {staleTime: 300000, gcTime: 3600000}});
+    const r = await call(T.news, {symbol: sym, limit: 8}, {cache: {staleTime: 300000, gcTime: 3600000}});
     if (S.sheetSym !== sym) return;
     const p = payloadOf(r);
     const hs = (p && p.data && p.data.headlines) || [];
@@ -658,6 +707,122 @@ async function loadNews(sym){
     if (S.sheetSym !== sym) return;
     el.innerHTML = `<span class="err">${esc(errText(e))}</span>`;
   }
+}
+
+/* ---------- connection diagnostics ---------- */
+const EXPECTED = Object.values(T);
+let lastDiag = {};
+function showSheet(html){
+  const sh = $("sheet");
+  sh.innerHTML = html;
+  $("scrim").hidden = false; sh.hidden = false; sh.scrollTop = 0;
+  document.body.style.overflow = "hidden";
+}
+const permsNs = () => D.hasClaude ? window.claude.use("permissions").catch(() => null) : Promise.resolve(null);
+function openDiag(){
+  S.sheetSym = null; S.diagOpen = true;
+  showSheet(`<div class="close"><div class="grab"></div></div>
+    <div class="sh-head"><h3 id="shTitle">Connection</h3></div>
+    <h2>Checks</h2><dl class="diag" id="dgChecks"><dt>Running</dt><dd>…</dd></dl>
+    <div id="dgFix"></div>
+    <div class="actions">
+      <button class="btn primary" id="dgTest">Run live test</button>
+      <button class="btn" id="dgAllow">Allow TradingView</button>
+      <button class="btn" id="dgManage">Permissions</button>
+      <button class="btn" id="dgCopy">Copy report</button>
+    </div>
+    <textarea id="copyArea" readonly hidden aria-label="Diagnostic report"></textarea>
+    <h2>Recent TradingView calls <span>newest first</span></h2>
+    <div class="logbox" id="dgLog"></div>
+    <p class="note"><button class="btn" id="shClose">Close</button></p>`);
+  $("shClose").addEventListener("click", closeSheet);
+  $("dgTest").addEventListener("click", runTest);
+  $("dgAllow").addEventListener("click", async () => {
+    const perms = await permsNs();
+    if (perms) await perms.request(["mcp:" + SERVER]).catch(() => null);
+    runChecks();
+  });
+  $("dgManage").addEventListener("click", async () => {
+    const perms = await permsNs();
+    try { if (!perms) throw 0; await perms.manage(); }
+    catch (e) { $("dgFix").innerHTML = `<div class="fix">Open the Permissions menu from this page's toolbar in Claude to change TradingView access.</div>`; return; }
+    runChecks();
+  });
+  $("dgCopy").addEventListener("click", copyReport);
+  renderDiagLog();
+  runChecks();
+}
+function renderDiagLog(){
+  const el = $("dgLog"); if (!el) return;
+  el.innerHTML = LOG.length ? LOG.map(l => `<div><span class="${l.ok ? "ok" : "no"}">${l.ok ? "OK " : "ERR"}</span> ${hm(l.t)} <b>${esc(l.tool)}</b>${l.ms != null ? ` ${l.ms} ms` : ""}<br>${esc(l.detail)}</div>`).join("")
+    : `<span class="skel">No calls yet.</span>`;
+}
+async function runChecks(){
+  const test = lastDiag.test;
+  const r = lastDiag = {time: new Date().toISOString(), hasClaude: D.hasClaude, framed: D.framed, mcp: D.mcpOk, useMs: D.useMs, ua: D.ua, test};
+  const perms = await permsNs();
+  r.permission = perms ? await perms.state("mcp:" + SERVER).catch(() => "unavailable") : "no permissions API";
+  if (S.mcp) {
+    try {
+      const lt = await S.mcp.listTools(SERVER);
+      const sv = (lt.servers || []).find(x => x.server === SERVER);
+      r.listed = !!sv;
+      r.authStatus = sv ? sv.authStatus : "not listed";
+      r.tools = sv ? sv.tools.map(t => t.name) : [];
+      r.missing = sv ? EXPECTED.filter(n => !r.tools.includes(n)) : EXPECTED.slice();
+      if (!sv) { const all = await S.mcp.listTools().catch(() => null); r.otherServers = all ? all.servers.map(x => x.server) : []; }
+    } catch (e) { r.listErr = errLine(e); }
+  }
+  r.recentErrors = LOG.filter(l => !l.ok).slice(0, 8).map(l => `${l.tool}: ${l.detail}`);
+  renderChecks(r);
+}
+const yes = (b, y, n) => b ? `<span class="ok">${y}</span>` : `<span class="no">${n}</span>`;
+function renderChecks(r){
+  const el = $("dgChecks"); if (!el) return;
+  el.innerHTML = `
+    <dt>Claude viewer</dt><dd>${yes(r.hasClaude, "Detected", "Not detected")}</dd>
+    <dt>Connector access</dt><dd>${r.mcp == null ? "Still starting…" : yes(r.mcp, `Available (${r.useMs} ms)`, "Unavailable in this view")}</dd>
+    <dt>Permission</dt><dd>${esc(r.permission)}</dd>
+    ${r.mcp ? `<dt>TradingView</dt><dd>${r.listErr ? `<span class="no">${esc(r.listErr)}</span>` : yes(r.listed, "Found", "Not found")}${r.authStatus ? " · auth " + esc(r.authStatus) : ""}</dd>
+    <dt>Tools</dt><dd>${r.tools ? `${EXPECTED.length - r.missing.length}/${EXPECTED.length} available${r.missing.length ? ` · missing: <span class="no">${esc(r.missing.map(short).join(", "))}</span>` : ""}` : "—"}</dd>` : ""}
+    ${r.otherServers ? `<dt>Connectors seen</dt><dd>${esc(r.otherServers.join(", ") || "none")}</dd>` : ""}
+    ${r.test ? `<dt>Live test</dt><dd>${r.test.ok ? `<span class="ok">Passed</span> · ${r.test.ms} ms · ${esc(r.test.detail)}` : `<span class="no">Failed</span> · ${esc(r.test.detail)}`}</dd>` : ""}`;
+  $("dgFix").innerHTML = advice(r);
+}
+function advice(r){
+  let m = "";
+  const errs = (r.recentErrors || []).join(" ") + " " + (r.test && !r.test.ok ? r.test.detail : "");
+  if (!r.hasClaude || r.mcp === false) m = "This view can't reach your connectors. Open the page from the claude.ai sidebar or inside the Claude app, signed in to the same Claude account that has TradingView connected.";
+  else if (r.permission === "denied") m = "TradingView is blocked for this page. Tap Permissions and turn TradingView on, then reload the page.";
+  else if (r.listed === false) m = "Claude didn't find a connector named Tradingview for this account. Check claude.ai Settings → Connectors while signed in on this device.";
+  else if (r.authStatus === "needs_reauth" || /needs_reauth/.test(errs)) m = "Your TradingView login expired. Reconnect TradingView in claude.ai Settings → Connectors, then reload the page.";
+  else if (r.missing && r.missing.length && r.permission === "granted") m = "TradingView doesn't list some tools this page uses. Copy the report and send it to Claude so the page can be updated.";
+  else if (/not_in_manifest|consent_required/.test(errs)) m = "TradingView access was declined for this page. Tap Allow TradingView, then Run live test.";
+  else if (/rate_limited|429/.test(errs)) m = "TradingView is rate-limiting requests from your account. The page keeps the last data and retries on its own. Wait a few minutes before refreshing.";
+  else if (/server_unavailable|upstream_error/.test(errs)) m = "TradingView's server didn't answer in time. This is usually temporary, and the page retries on its own.";
+  else if (r.test && r.test.ok) m = "The connection works. If a section still looks wrong, tap Copy report and send it to Claude.";
+  else if (r.permission === "prompt") m = "TradingView hasn't been allowed for this page yet. Tap Allow TradingView or Run live test.";
+  return m ? `<div class="fix">${esc(m)}</div>` : "";
+}
+async function runTest(){
+  if (!S.mcp) { lastDiag.test = {ok: false, detail: "connector access unavailable in this view"}; renderChecks(lastDiag); return; }
+  const b = $("dgTest"); b.disabled = true; b.textContent = "Testing…";
+  const t0 = Date.now();
+  try {
+    const r = await call(T.wl, null, {cache: {refresh: true}});
+    const p = payloadOf(r);
+    const wl = (p && p.watchlist) || {};
+    lastDiag.test = {ok: true, ms: Date.now() - t0, detail: `watchlist "${wl.name || "?"}" with ${(wl.symbols || []).length} symbols`};
+  } catch (e) { lastDiag.test = {ok: false, detail: errLine(e)}; }
+  if ($("dgTest")) { b.disabled = false; b.textContent = "Run live test"; }
+  await runChecks();
+}
+async function copyReport(){
+  const rep = {...lastDiag, log: LOG.slice(0, 25).map(l => `${new Date(l.t).toISOString()} ${l.ok ? "OK" : "ERR"} ${l.tool}${l.ms != null ? " " + l.ms + "ms" : ""} ${l.detail}`)};
+  const text = "Pocket Trade Desk diagnostics\n" + JSON.stringify(rep, null, 2);
+  const ta = $("copyArea"); ta.value = text;
+  try { await navigator.clipboard.writeText(text); $("dgCopy").textContent = "Copied"; ta.hidden = true; }
+  catch (e) { ta.hidden = false; ta.focus(); ta.select(); $("dgCopy").textContent = "Select and copy the text below"; }
 }
 
 // keep relative times fresh
