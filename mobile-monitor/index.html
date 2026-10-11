@@ -276,7 +276,7 @@ async function call(tool, input, opts){
 /* ---------- helpers ---------- */
 const ticker = s => String(s).split(":").pop().toUpperCase();
 const exch = s => String(s).includes(":") ? String(s).split(":")[0] : "";
-const isFx = s => /^[A-Z]{6}$/.test(ticker(s)) && (CCY_COUNTRY[ticker(s).slice(0,3)] || CCY_COUNTRY[ticker(s).slice(3)]);
+const isFx = s => /^[A-Z]{6}$/.test(ticker(s)) && !!CCY_COUNTRY[ticker(s).slice(0,3)] && !!CCY_COUNTRY[ticker(s).slice(3)];
 const pretty = s => isFx(s) ? ticker(s).slice(0,3) + "/" + ticker(s).slice(3) : ticker(s);
 const pip = s => isFx(s) ? (ticker(s).endsWith("JPY") ? 0.01 : 0.0001) : null;
 function decimals(s, v){
