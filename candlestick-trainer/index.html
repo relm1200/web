@@ -24,6 +24,7 @@
       <button role="tab" id="tab-drill" aria-controls="panel-drill" aria-selected="true">Drill</button>
       <button role="tab" id="tab-spot" aria-controls="panel-spot" aria-selected="false">Spot</button>
       <button role="tab" id="tab-setups" aria-controls="panel-setups" aria-selected="false">Setups</button>
+      <button role="tab" id="tab-structure" aria-controls="panel-structure" aria-selected="false">Structure</button>
       <button role="tab" id="tab-library" aria-controls="panel-library" aria-selected="false">Library</button>
       <button role="tab" id="tab-progress" aria-controls="panel-progress" aria-selected="false">Progress</button>
     </nav>
@@ -159,6 +160,46 @@
     </div>
   </section>
 
+  <!-- STRUCTURE -->
+  <section id="panel-structure" role="tabpanel" aria-labelledby="tab-structure" class="panel" hidden>
+    <div class="toolbar">
+      <div class="field">
+        <label for="struct-mode">Question</label>
+        <select id="struct-mode">
+          <option value="label">Label the swings</option>
+          <option value="trend">Call the trend</option>
+          <option value="find">Find the swing</option>
+        </select>
+      </div>
+      <fieldset class="field groups" id="struct-assist">
+        <legend>Assist</legend>
+        <label><input type="checkbox" id="struct-show"> Show swing points</label>
+      </fieldset>
+      <p class="note">A swing high is a candle whose high is above the 2 candles on each side; a swing low is the mirror image. Highs are compared with the previous high (HH or LH), lows with the previous low (HL or LL).</p>
+    </div>
+    <div class="scoreline" aria-live="polite">
+      <span><b id="struct-score">0</b>/<span id="struct-total">0</span> correct</span>
+      <span>Streak <b id="struct-streak">0</b></span>
+    </div>
+    <div class="workbench">
+      <figure class="chart-card">
+        <figcaption class="chart-head">
+          <span class="instrument" id="struct-instrument">EUR/USD · H4</span>
+          <span class="ohlc" id="struct-ohlc">Hover a candle for O H L C</span>
+        </figcaption>
+        <div class="chart-wrap"><svg id="structure-chart" class="chart" role="img" aria-label="Candlestick chart for market structure practice"></svg></div>
+      </figure>
+      <div class="answer-col">
+        <h2 class="prompt" id="struct-prompt">Label each numbered swing</h2>
+        <p class="hint" id="struct-hint"></p>
+        <div id="struct-body"></div>
+        <button type="button" class="primary" id="struct-check" hidden disabled>Check my labels</button>
+        <div class="feedback" id="struct-feedback" hidden></div>
+        <button type="button" class="primary" id="struct-next" hidden>Next chart</button>
+      </div>
+    </div>
+  </section>
+
   <!-- LIBRARY -->
   <section id="panel-library" role="tabpanel" aria-labelledby="tab-library" class="panel" hidden>
     <div class="library-intro">
@@ -187,6 +228,10 @@
         <li><b>Wait for the close.</b> A candle isn't a pattern until it closes. A hammer half-way through the session can still finish as a bearish candle.</li>
         <li><b>Plan the risk first.</b> Most patterns give a natural stop beyond the wick extreme. Size the position from that distance, not the other way round.</li>
       </ul>
+    </aside>
+    <aside class="forex-notes" id="structure-notes">
+      <h3>Market structure</h3>
+      <ul id="structure-rules"></ul>
     </aside>
     <aside class="forex-notes sources" id="sources">
       <h3>Sources</h3>
@@ -220,6 +265,7 @@
 </div>
 <!--BODY-END-->
 <script src="js/patterns.js"></script>
+<script src="js/structure.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

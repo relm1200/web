@@ -15,7 +15,7 @@ const title = html.match(/<title>[\s\S]*?<\/title>/)[0];
 const fonts = html.match(/<link rel="preconnect"[\s\S]*?display=swap">/)[0];
 const body = html.split('<!--BODY-START-->')[1].split('<!--BODY-END-->')[0];
 const css = read('css/styles.css');
-const js = read('js/patterns.js') + '\n' + read('js/app.js');
+const js = ['js/patterns.js', 'js/structure.js', 'js/app.js'].map(read).join('\n');
 const guard = (s) => s.replace(/<\/script/gi, '<\\/script');
 
 const inner = `${title}

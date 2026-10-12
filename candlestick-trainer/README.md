@@ -18,6 +18,7 @@ For a single file to share or host, run `npm run build:single`. It writes
 | **Drill** | A chart ends on a pattern. Name it (4 choices), call its bias (bullish / bearish / indecision), or **read the candle** (who's in control, based on the Monster Guide's body-and-wick principles). Feedback shows the measured trend and candle proportions next to the rules, why your pick didn't fit, and the source. |
 | **Spot** | You're told the pattern. Find the candle that completes it on a longer chart that includes what price did afterwards. |
 | **Setups** | Grade a reversal pattern against the Monster Guide's checklist: with the bigger trend (20-period average), at support/resistance after a pullback, and larger than the earlier candles. Passing setups show the guide's trade plan: entry at the next open, stop beyond the pattern, risk in pips. |
+| **Structure** | Market structure practice on generated swing charts. **Label the swings** (mark each numbered swing HH, HL, LH or LL), **call the trend** (uptrend, downtrend or range, with an optional swing-point assist), or **find the swing** (click the most recent HH, HL, LH or LL). Feedback draws the zigzag, labels every swing, measures each comparison in average ranges, and explains which swings decide the trend. |
 | **Library** | All 28 patterns with a generated example, rules, meaning, confirmation, source citations and notes where sources disagree, plus forex reading notes and a Sources panel. |
 | **Progress** | Accuracy per pattern for Drill and Spot, which pattern you most often confuse it with, and totals for candle reading and setups. Saved in your browser only. |
 
@@ -68,6 +69,24 @@ candles"). The trainer turns these into numbers, shown in each rule. The setup t
 (average slope ≥ 1.0 average ranges, within 0.6 of the level, last candle ≥ 1.3× average range)
 are the trainer's own; the guide gives no figures.
 
+## Market structure
+
+Defined in `js/structure.js` (standard Dow Theory reading; neither attached PDF defines swing
+structure, and the app says so):
+
+- **Swing high / low:** a candle whose high (low) is beyond the 2 candles on each side. Highs
+  and lows alternate; of two in a row, the more extreme one is kept. The last 2 candles can't
+  confirm a swing yet.
+- **HH / LH:** each swing high compared with the previous swing high. **HL / LL:** each swing
+  low compared with the previous swing low. The first high and first low are unlabelled.
+- **Trend:** uptrend when the latest high is HH and the latest low is HL; downtrend when they
+  are LH and LL; otherwise range / no clear trend.
+
+Charts are built from designed swing points (trends, ranges and reversals). A chart is kept
+only if the detector finds exactly those swings and every comparison differs by at least 0.3
+average ranges, so no label is a judgement call. Answers always come from the detector, not
+from the scenario the chart was built from.
+
 ## How the rules work
 
 All definitions live in `js/patterns.js` (`PATTERNS`). Each pattern has:
@@ -105,7 +124,9 @@ the Monster Guide's top-quarter close for hammers, tweezer rejection, candle rea
 thousands of generated charts. They confirm that every drill chart ends on a valid instance,
 every Spot chart contains exactly one, every candle-reading chart has exactly one correct
 reading, every setup chart matches all 8 pass/fail combinations of the checklist, and that
-charts qualifying as a second pattern stay under 6%.
+charts qualifying as a second pattern stay under 6%. Structure tests check swing detection
+and labelling on hand-built charts, the trend rule, and that every generated structure chart
+re-detects to exactly its designed swings.
 
 ## Matching it to a specific video or course
 

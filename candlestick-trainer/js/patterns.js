@@ -1337,6 +1337,6 @@
     READ_KINDS,
     classifyCandle,
     generateRead,
-    _internal: { series, mk, TREND_LOOKBACK, TREND_THRESHOLD },
+    _internal: { series, mk, toMarket, TREND_LOOKBACK, TREND_THRESHOLD },
   };
 });

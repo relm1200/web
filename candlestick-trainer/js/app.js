@@ -1,7 +1,8 @@
-/* Wick Reader UI: drill, spot, setups, library and progress views. */
+/* Wick Reader UI: drill, spot, setups, structure, library and progress views. */
 (function () {
   'use strict';
   const L = window.CandleLab;
+  const S = window.StructureLab;
   const { PATTERNS, BY_ID } = L;
   const SVGNS = 'http://www.w3.org/2000/svg';
   const $ = (id) => document.getElementById(id);
@@ -27,7 +28,9 @@
     spotGroups: Object.assign(allGroups(), sp.spotGroups),
   });
   // Counters for the modes that are not tied to one pattern.
-  const extra = Object.assign({ read: { a: 0, c: 0 }, setup: { a: 0, c: 0 } }, saved.extra);
+  const blankStructure = () => ({ label: { a: 0, c: 0 }, trend: { a: 0, c: 0 }, find: { a: 0, c: 0 }, labels: { HH: { a: 0, c: 0 }, HL: { a: 0, c: 0 }, LH: { a: 0, c: 0 }, LL: { a: 0, c: 0 } } });
+  const extra = Object.assign({ read: { a: 0, c: 0 }, setup: { a: 0, c: 0 }, structure: blankStructure() }, saved.extra);
+  prefs.structMode = prefs.structMode || 'label';
   function persist() {
     try { localStorage.setItem(KEY, JSON.stringify({ stats, prefs, extra })); } catch (e) { /* storage unavailable */ }
   }
@@ -87,7 +90,8 @@
       if (typeof p === 'number') { lo = Math.min(lo, p); hi = Math.max(hi, p); }
     }
     const span = hi - lo || 1;
-    lo -= span * 0.06; hi += span * 0.06;
+    const padFrac = opts.swings ? 0.14 : 0.06; // room for swing markers above highs and below lows
+    lo -= span * padFrac; hi += span * padFrac;
     const y = (p) => pad.t + ((hi - p) / (hi - lo)) * ph;
     const slot = pw / cs.length;
     const x = (i) => pad.l + slot * (i + 0.5);
@@ -145,6 +149,27 @@
       const h = Math.max(1, Math.abs(y(k.o) - y(k.c)));
       el('rect', { class: cls, x: x(i) - bw / 2, y: top, width: bw, height: h, 'stroke-width': 0 }, svg);
     });
+
+    if (opts.swings) {
+      const sw = opts.swings;
+      if (sw.zigzag) el('polyline', { class: 'zig', points: sw.points.map((p) => `${x(p.index).toFixed(1)},${y(p.price).toFixed(1)}`).join(' ') }, svg);
+      sw.points.forEach((p, n) => {
+        const dir = p.kind === 'high' ? -1 : 1;
+        const cy = y(p.price) + dir * 13;
+        const ring = sw.rings && sw.rings[p.index];
+        if (ring) el('circle', { class: 'swing-ring ' + ring, cx: x(p.index), cy: y(p.price), r: 9 }, svg);
+        const tag = sw.tags && sw.tags[p.index];
+        if (tag) {
+          const t = el('text', { class: 'swing-tag ' + tag.cls, x: x(p.index), y: cy + 4 + dir * (sw.numbers ? 16 : 0) }, svg);
+          t.textContent = tag.text;
+        }
+        if (sw.numbers) {
+          el('circle', { class: 'swing-dot' + (sw.pending && sw.pending.has(p.index) ? ' pending' : ''), cx: x(p.index), cy, r: 8 }, svg);
+          const t = el('text', { class: 'swing-num', x: x(p.index), y: cy + 3.5 }, svg);
+          t.textContent = String(n + 1);
+        }
+      });
+    }
 
     for (const ln of opts.lines || []) {
       el('line', { class: ln.cls, x1: x(cs.length - 1) - slot * 6, x2: pad.l + pw, y1: y(ln.price), y2: y(ln.price) }, svg);
@@ -590,7 +615,221 @@
     updateScores();
   }
 
+  // ---------- market structure ----------
+  const struct = { q: null, answers: {}, done: false, score: 0, total: 0, streak: 0, target: null };
+  const LABEL_KEYS = ['HH', 'HL', 'LH', 'LL'];
+  const tagFor = (label) => (label ? { text: label, cls: S.LABELS[label].bias } : { text: 'start', cls: 'neutral' });
+
+  function newStructure() {
+    const mode = prefs.structMode;
+    const want = mode === 'trend' ? ['up', 'down', 'range'][Math.floor(rng() * 3)] : undefined;
+    struct.q = S.generateStructure(rng, { trend: want });
+    struct.answers = {};
+    struct.done = false;
+    struct.target = null;
+    const body = $('struct-body');
+    body.innerHTML = '';
+    $('struct-feedback').hidden = true;
+    $('struct-next').hidden = true;
+    $('struct-check').hidden = mode !== 'label';
+    $('struct-check').disabled = true;
+    $('struct-assist').hidden = mode !== 'trend';
+    $('struct-instrument').textContent = `${struct.q.pair.symbol} · ${struct.q.tf.tf}`;
+
+    if (mode === 'label') {
+      $('struct-prompt').textContent = 'Label each numbered swing';
+      $('struct-hint').textContent = 'Points 1 and 2 start the structure: there is nothing earlier to compare them with. Compare every other high with the previous high, and every low with the previous low.';
+      const rows = document.createElement('div');
+      rows.className = 'label-rows';
+      struct.q.swings.forEach((sw, n) => {
+        if (!sw.label) return;
+        const row = document.createElement('div');
+        row.className = 'label-row';
+        row.dataset.index = sw.index;
+        row.innerHTML = `<span class="pt">Point ${n + 1}</span>
+          <div class="seg four" role="group" aria-label="Label for point ${n + 1}">${LABEL_KEYS.map((k) => `<button type="button" data-v="${k}" aria-pressed="false">${k}</button>`).join('')}</div>`;
+        rows.appendChild(row);
+      });
+      body.appendChild(rows);
+    } else if (mode === 'trend') {
+      $('struct-prompt').textContent = 'What is the trend?';
+      $('struct-hint').textContent = 'Judge it from the latest swing high and latest swing low. Keys 1–3 answer, Enter moves on.';
+      const box = document.createElement('div');
+      box.className = 'options';
+      ['up', 'down', 'range'].forEach((t, n) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'opt';
+        b.dataset.value = t;
+        b.innerHTML = `<span class="key">${n + 1}</span><span>${esc(S.TRENDS[t].name)}</span>`;
+        b.addEventListener('click', () => answerStructTrend(t));
+        box.appendChild(b);
+      });
+      body.appendChild(box);
+    } else {
+      const present = LABEL_KEYS.filter((k) => struct.q.swings.some((sw) => sw.label === k));
+      const label = present[Math.floor(rng() * present.length)];
+      struct.target = [...struct.q.swings].reverse().find((sw) => sw.label === label);
+      $('struct-prompt').innerHTML = `Find the most recent <span class="target">${esc(S.LABELS[label].name)}</span>`;
+      $('struct-hint').textContent = 'Tap or click the candle that forms it. Arrow keys and Enter work too.';
+    }
+    drawStructure();
+  }
+
+  function drawStructure(reveal) {
+    const q = struct.q;
+    const mode = prefs.structMode;
+    const opts = { ohlcEl: $('struct-ohlc'), lastTag: true };
+    const showPoints = mode === 'label' || (prefs.structShow && mode !== 'find') || reveal;
+    if (showPoints) {
+      opts.swings = { points: q.swings, numbers: true, zigzag: !!reveal };
+      if (reveal) {
+        opts.swings.tags = {};
+        q.swings.forEach((sw) => { opts.swings.tags[sw.index] = tagFor(sw.label); });
+        if (reveal.rings) opts.swings.rings = reveal.rings;
+      }
+    }
+    if (mode === 'find' && !reveal) opts.onPick = pickStructure;
+    renderChart($('structure-chart'), q, opts);
+  }
+
+  function recordStruct(kind, ok) {
+    const e = extra.structure;
+    e[kind].a++;
+    if (ok) e[kind].c++;
+    struct.total++;
+    if (ok) { struct.score++; struct.streak++; } else struct.streak = 0;
+    persist();
+  }
+
+  function explainTrend(q) {
+    const { lastHigh, lastLow } = S.trendFrom(q.swings);
+    const num = (sw) => q.swings.indexOf(sw) + 1;
+    const t = S.TRENDS[q.trend];
+    let html = `<p class="label">Reading the structure</p><p>Latest swing high: point ${num(lastHigh)} (${lastHigh.label}). Latest swing low: point ${num(lastLow)} (${lastLow.label}). So the structure says <b>${esc(t.name)}</b>: ${esc(t.rule)}</p>`;
+    const earlier = q.swings.filter((sw) => sw.label && sw !== lastHigh && sw !== lastLow).map((sw) => S.LABELS[sw.label].bias);
+    const now = q.trend === 'up' ? 'bullish' : q.trend === 'down' ? 'bearish' : null;
+    if (now && earlier.some((b) => b !== now)) {
+      html += `<p>Earlier swings pointed the other way. The structure changed during this chart, and only the latest high and low decide the current trend.</p>`;
+    }
+    html += `<p class="cite">The last ${S.STRUCTURE.strength} candles cannot confirm a swing yet, because a swing needs ${S.STRUCTURE.strength} candles on each side.</p>`;
+    return html;
+  }
+
+  function structRulesHtml() {
+    return `<p class="label">Rules</p><ul>${LABEL_KEYS.map((k) => `<li><b>${k}</b> (${esc(S.LABELS[k].name)}): ${esc(S.LABELS[k].rule)}</li>`).join('')}</ul>
+      <p class="cite">${esc(S.SOURCE_NOTE)}</p>`;
+  }
+
+  function checkStructLabels() {
+    if (struct.done) return;
+    const q = struct.q;
+    const labelled = q.swings.filter((sw) => sw.label);
+    if (labelled.some((sw) => !struct.answers[sw.index])) return;
+    struct.done = true;
+    let right = 0;
+    const rings = {};
+    for (const sw of labelled) {
+      const ok = struct.answers[sw.index] === sw.label;
+      if (ok) right++;
+      rings[sw.index] = ok ? 'ok' : 'bad';
+      const st = extra.structure.labels[sw.label];
+      st.a++;
+      if (ok) st.c++;
+    }
+    for (const row of $('struct-body').querySelectorAll('.label-row')) {
+      const sw = q.swings.find((x) => x.index === +row.dataset.index);
+      const ok = struct.answers[sw.index] === sw.label;
+      row.classList.add(ok ? 'right' : 'wrong');
+      for (const b of row.querySelectorAll('button')) {
+        b.disabled = true;
+        if (!ok && b.dataset.v === sw.label) b.setAttribute('aria-pressed', 'true');
+      }
+      if (!ok) row.querySelector('.pt').innerHTML += `<small>Answer: ${sw.label}</small>`;
+    }
+    const allRight = right === labelled.length;
+    recordStruct('label', allRight);
+    drawStructure({ rings });
+    const num = (sw) => q.swings.indexOf(sw) + 1;
+    const rows = labelled.map((sw) => {
+      const prev = q.swings.find((x) => x.index === sw.prevIndex);
+      const dir = sw.diff > 0 ? 'above' : 'below';
+      return `Point ${num(sw)}: ${sw.label}, ${Math.abs(sw.diff).toFixed(1)} avg ranges ${dir} point ${num(prev)}’s ${sw.kind}`;
+    });
+    const fb = $('struct-feedback');
+    fb.className = 'feedback ' + (allRight ? 'ok' : 'bad');
+    fb.innerHTML = `<p class="verdict">${right} of ${labelled.length} labelled correctly.</p>
+      <ul class="measure">${rows.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
+      ${explainTrend(q)}${structRulesHtml()}`;
+    fb.hidden = false;
+    $('struct-check').hidden = true;
+    $('struct-next').hidden = false;
+    $('struct-next').focus({ preventScroll: true });
+    updateScores();
+  }
+
+  function answerStructTrend(value) {
+    if (struct.done) return;
+    struct.done = true;
+    const q = struct.q;
+    const ok = value === q.trend;
+    recordStruct('trend', ok);
+    for (const b of $('struct-body').querySelectorAll('.opt')) {
+      b.disabled = true;
+      if (b.dataset.value === q.trend) b.classList.add('correct');
+      else if (b.dataset.value === value) b.classList.add('wrong');
+      else b.classList.add('dim');
+    }
+    drawStructure({});
+    const fb = $('struct-feedback');
+    fb.className = 'feedback ' + (ok ? 'ok' : 'bad');
+    fb.innerHTML = `<p class="verdict">${ok ? 'Correct.' : 'Not this time.'}</p><h3>${esc(S.TRENDS[q.trend].name)}</h3>${explainTrend(q)}${structRulesHtml()}`;
+    fb.hidden = false;
+    $('struct-next').hidden = false;
+    $('struct-next').focus({ preventScroll: true });
+    updateScores();
+  }
+
+  function pickStructure(i) {
+    if (struct.done) return;
+    struct.done = true;
+    const q = struct.q;
+    const t = struct.target;
+    const k = q.candles[i];
+    // a candle that touches exactly the same extreme counts too
+    const ok = i === t.index || (t.kind === 'high' ? k.h === t.price : k.l === t.price);
+    recordStruct('find', ok);
+    const rings = { [t.index]: 'target' };
+    const picked = q.swings.find((sw) => sw.index === i);
+    drawStructure({ rings });
+    const num = (sw) => q.swings.indexOf(sw) + 1;
+    const prev = q.swings.find((x) => x.index === t.prevIndex);
+    let html = `<p class="verdict">${ok ? 'Found it.' : 'Not that candle.'}</p>`;
+    if (!ok) html += picked ? `<p>You picked point ${num(picked)}, which is ${picked.label ? 'a ' + esc(S.LABELS[picked.label].name) : 'the start of the structure'}.</p>` : '<p>That candle is not a swing point: it doesn’t beat the 2 candles on each side.</p>';
+    html += `<p>The most recent ${esc(S.LABELS[t.label].name)} is point ${num(t)}, circled in green. It is ${Math.abs(t.diff).toFixed(1)} avg ranges ${t.diff > 0 ? 'above' : 'below'} the previous ${t.kind} at point ${num(prev)}.</p>`;
+    html += explainTrend(q) + structRulesHtml();
+    const fb = $('struct-feedback');
+    fb.className = 'feedback ' + (ok ? 'ok' : 'bad');
+    fb.innerHTML = html;
+    fb.hidden = false;
+    $('struct-next').hidden = false;
+    $('struct-next').focus({ preventScroll: true });
+    updateScores();
+  }
+
+  function buildStructureRules() {
+    $('structure-rules').innerHTML =
+      `<li><b>Swing high / swing low:</b> a candle whose high (low) is beyond the ${S.STRUCTURE.strength} candles on each side. Highs and lows alternate. A swing is only confirmed once ${S.STRUCTURE.strength} more candles have closed.</li>` +
+      LABEL_KEYS.map((k) => `<li><b>${k}, ${esc(S.LABELS[k].name)}:</b> ${esc(S.LABELS[k].rule)}</li>`).join('') +
+      ['up', 'down', 'range'].map((t) => `<li><b>${esc(S.TRENDS[t].name)}:</b> ${esc(S.TRENDS[t].rule)}</li>`).join('') +
+      `<li><b>How it links to candlesticks:</b> reversal patterns matter most where structure is being tested, such as a hammer at a higher low in an uptrend.</li>` +
+      `<li class="cite">${esc(S.SOURCE_NOTE)}</li>`;
+  }
+
   function updateScores() {
+    $('struct-score').textContent = struct.score;
+    $('struct-total').textContent = struct.total;
+    $('struct-streak').textContent = struct.streak;
     $('setup-score').textContent = setup.score;
     $('setup-total').textContent = setup.total;
     $('setup-streak').textContent = setup.streak;
@@ -678,8 +917,15 @@
     if (sa) parts.push(`Spot: ${sc}/${sa} found (${Math.round((100 * sc) / sa)}%)`);
     if (extra.read.a) parts.push(`Candle reading: ${extra.read.c}/${extra.read.a} (${Math.round((100 * extra.read.c) / extra.read.a)}%)`);
     if (extra.setup.a) parts.push(`Setups: ${extra.setup.c}/${extra.setup.a} fully graded (${Math.round((100 * extra.setup.c) / extra.setup.a)}%)`);
+    const es = extra.structure;
+    const pc = (o) => `${o.c}/${o.a} (${Math.round((100 * o.c) / o.a)}%)`;
+    if (es.label.a) parts.push(`Structure charts fully labelled: ${pc(es.label)}`);
+    if (es.trend.a) parts.push(`Trend calls: ${pc(es.trend)}`);
+    if (es.find.a) parts.push(`Swings found: ${pc(es.find)}`);
+    const lab = LABEL_KEYS.filter((k) => es.labels[k].a).map((k) => `${k} ${Math.round((100 * es.labels[k].c) / es.labels[k].a)}%`);
+    if (lab.length) parts.push(`Swing labels: ${lab.join(', ')}`);
     if (tried.length && tried[0].s.c < tried[0].s.a) parts.push(`Weakest so far: ${tried[0].def.name}`);
-    $('prog-summary').textContent = parts.length ? parts.join(' · ') + '.' : 'No answers yet. Results from Drill, Spot and Setups appear here, saved in this browser only.';
+    $('prog-summary').textContent = parts.length ? parts.join(' · ') + '.' : 'No answers yet. Results from Drill, Spot, Setups and Structure appear here, saved in this browser only.';
 
     $('prog-rows').innerHTML = rows.map(({ def, s, mix }) => `
       <tr>
@@ -693,7 +939,7 @@
   }
 
   // ---------- tabs ----------
-  const TABS = ['drill', 'spot', 'setups', 'library', 'progress'];
+  const TABS = ['drill', 'spot', 'setups', 'structure', 'library', 'progress'];
   function showTab(name) {
     if (!TABS.includes(name)) name = 'drill';
     TABS.forEach((t) => {
@@ -707,6 +953,7 @@
     if (svg && svg._render) renderChart(svg, ...svg._render); // re-measure now the panel is visible
     if (name === 'spot' && !spot.q) newSpot();
     if (name === 'setups' && !setup.q) newSetup();
+    if (name === 'structure' && !struct.q) newStructure();
     if (name === 'progress') renderProgress();
   }
 
@@ -729,6 +976,21 @@
     $('spot-next').addEventListener('click', newSpot);
     $('spot-reveal').addEventListener('click', () => pickSpot(-1, true));
     $('setup-next').addEventListener('click', newSetup);
+    $('struct-mode').value = prefs.structMode;
+    $('struct-show').checked = !!prefs.structShow;
+    $('struct-mode').addEventListener('change', (e) => { prefs.structMode = e.target.value; persist(); newStructure(); });
+    $('struct-show').addEventListener('change', (e) => { prefs.structShow = e.target.checked; persist(); if (struct.q && !struct.done) drawStructure(); });
+    $('struct-next').addEventListener('click', newStructure);
+    $('struct-check').addEventListener('click', checkStructLabels);
+    $('struct-body').addEventListener('click', (e) => {
+      const b = e.target.closest('.label-row button[data-v]');
+      if (!b || struct.done) return;
+      const row = b.closest('.label-row');
+      struct.answers[row.dataset.index] = b.dataset.v;
+      for (const x of row.querySelectorAll('button')) x.setAttribute('aria-pressed', String(x === b));
+      const need = struct.q.swings.filter((sw) => sw.label);
+      $('struct-check').disabled = need.some((sw) => !struct.answers[sw.index]);
+    });
     $('setup-check').addEventListener('click', checkSetup);
     $('setup-checks').addEventListener('click', (e) => {
       const b = e.target.closest('button[data-v]');
@@ -758,6 +1020,7 @@
       for (const k of Object.keys(stats)) delete stats[k];
       extra.read = { a: 0, c: 0 };
       extra.setup = { a: 0, c: 0 };
+      extra.structure = blankStructure();
       prefs.best = 0;
       persist();
       $('prog-confirm').hidden = true;
@@ -767,7 +1030,19 @@
     });
 
     document.addEventListener('keydown', (e) => {
-      if ($('panel-drill').hidden || e.altKey || e.ctrlKey || e.metaKey) return;
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      const tag0 = (e.target.tagName || '').toLowerCase();
+      if (!$('panel-structure').hidden && tag0 !== 'select' && tag0 !== 'input') {
+        if (!struct.done && prefs.structMode === 'trend' && /^[1-3]$/.test(e.key)) {
+          const b = $('struct-body').querySelectorAll('.opt')[+e.key - 1];
+          if (b) { e.preventDefault(); b.click(); }
+        } else if (struct.done && e.key === 'Enter' && e.target === document.body) {
+          e.preventDefault();
+          newStructure();
+        }
+        return;
+      }
+      if ($('panel-drill').hidden) return;
       const tag = (e.target.tagName || '').toLowerCase();
       if (tag === 'select' || tag === 'input') return;
       if (!drill.answered && /^[1-5]$/.test(e.key)) {
@@ -783,7 +1058,7 @@
     window.addEventListener('resize', () => {
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
-        for (const id of ['drill-chart', 'spot-chart', 'setup-chart']) {
+        for (const id of ['drill-chart', 'spot-chart', 'setup-chart', 'structure-chart']) {
           const svg = $(id);
           if (svg._render && svg.getBoundingClientRect().width) renderChart(svg, ...svg._render);
         }
@@ -792,6 +1067,7 @@
 
     buildLibrary();
     buildSources();
+    buildStructureRules();
     newDrill();
     updateScores();
     const hash = location.hash.replace('#', '');
