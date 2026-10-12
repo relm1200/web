@@ -125,3 +125,84 @@ test('explain reports trend and per-candle proportions', () => {
   assert.equal(ex.candles.length, 3);
   for (const c of ex.candles) assert.ok(c.bodyPct + c.upperPct + c.lowerPct >= 98 && c.bodyPct + c.upperPct + c.lowerPct <= 102);
 });
+
+// ---------- source-derived rules (Monster Guide / 58-pattern manual) ----------
+
+test('every pattern cites a source document or explains why it has none', () => {
+  for (const p of L.PATTERNS) {
+    assert.ok(['reversal', 'continuation', 'indecision'].includes(p.role), p.id);
+    assert.ok(p.refs.length > 0 || p.notes.length > 0, `${p.id} has no source`);
+    for (const r of p.refs) assert.ok(L.SOURCES[r.src] && Number.isInteger(r.n), p.id);
+  }
+});
+
+test('hammer must close in the top quarter of its range (Monster Guide p. 9)', () => {
+  const ok = trend('down');
+  const p = lastClose(ok);
+  // body 0.25, lower wick 0.9, close at the top
+  ok.push(k(p, p + 0.27, p - 0.9, p + 0.25));
+  assert.ok(L.detectAt(ok, ok.length - 1).includes('hammer'));
+  // same proportions but bearish and with more upper wick: close at ~0.62 of the range
+  const bad = trend('down');
+  const q = lastClose(bad);
+  bad.push(k(q, q + 0.14, q - 1.0, q - 0.25));
+  assert.ok(!L.detectAt(bad, bad.length - 1).includes('hammer'));
+});
+
+test('tweezer bottom accepts a bullish first candle that shows rejection (Monster Guide p. 12)', () => {
+  const cs = trend('down');
+  const p = lastClose(cs);
+  cs.push(k(p, p + 0.3, p - 0.8, p + 0.1)); // bullish, long lower wick
+  cs.push(k(p + 0.1, p + 0.6, p - 0.8, p + 0.5)); // re-tests the low, closes bullish
+  assert.ok(L.detectAt(cs, cs.length - 1).includes('tweezer-bottom'));
+  cs[cs.length - 1] = k(p + 0.1, p + 0.6, p - 0.6, p + 0.5); // misses the low
+  assert.ok(!L.detectAt(cs, cs.length - 1).includes('tweezer-bottom'));
+});
+
+test('rising three methods fails if a middle candle breaks candle 1’s range', () => {
+  const q = L.generateDrill('rising-three-methods', L.mulberry32(8));
+  const cs = q.candles.map((c) => ({ ...c }));
+  const first = cs[q.index - 4];
+  cs[q.index - 2].l = first.l - (first.h - first.l) * 0.05;
+  assert.ok(!L.matches(cs, q.index, 'rising-three-methods'));
+});
+
+test('reading a candle: wick rejection outweighs a small body’s colour (Monster Guide p. 34)', () => {
+  assert.deepEqual(L.classifyCandle(k(1, 2.2, 0.95, 1.2)), ['reject-high']); // bullish close, long upper wick
+  assert.deepEqual(L.classifyCandle(k(1, 1.05, -0.2, 0.8)), ['reject-low']); // bearish close, long lower wick
+  assert.deepEqual(L.classifyCandle(k(1, 2.1, 0.95, 2.0)), ['buyers']);
+  assert.deepEqual(L.classifyCandle(k(1, 1.5, 0.5, 1.02)), ['indecision']);
+});
+
+test('candle-reading charts always have exactly one correct reading', () => {
+  const rng = L.mulberry32(31);
+  for (const kind of L.READ_KINDS) {
+    for (let n = 0; n < 100; n++) {
+      const q = L.generateRead(rng, kind.id);
+      assert.deepEqual(L.classifyCandle(q.candles[q.index]), [kind.id]);
+    }
+  }
+});
+
+test('setup charts match every requested combination of the three checks', () => {
+  const rng = L.mulberry32(4242);
+  for (const id of L.SETUP_PATTERNS) {
+    for (const trendOk of [true, false]) for (const level of [true, false]) for (const size of [true, false]) {
+      const q = L.generateSetup(id, rng, { trend: trendOk, level, size });
+      assert.ok(L.matches(q.candles, q.index, id), id);
+      const ev = L.evaluateSetup(q.candles, q.index, id, q.level);
+      assert.equal(ev.trend.ok, trendOk, `${id} trend`);
+      assert.equal(ev.level.ok, level, `${id} level`);
+      assert.equal(ev.size.ok, size, `${id} size`);
+      assert.equal(ev.pass, trendOk && level && size);
+    }
+  }
+});
+
+test('moving average and big-trend direction', () => {
+  const cs = [];
+  for (let n = 0; n < 40; n++) cs.push(k(n, n + 0.6, n - 0.6, n + 0.5));
+  assert.equal(L.sma(cs, 19, 20), cs.slice(0, 20).reduce((t, c) => t + c.c, 0) / 20);
+  assert.equal(L.bigTrend(cs, 39).dir, 'up');
+  assert.equal(L.bigTrend(cs.map((c) => ({ o: -c.o, h: -c.l, l: -c.h, c: -c.c })).map((c) => ({ o: c.o + 100, h: c.h + 100, l: c.l + 100, c: c.c + 100 })), 39).dir, 'down');
+});

@@ -27,6 +27,9 @@
   --good-soft: rgba(13, 133, 102, 0.12);
   --bad-soft: rgba(195, 49, 63, 0.11);
   --shade: rgba(42, 67, 196, 0.09);
+  --ma: #b7791f;
+  --level: #6b4fbb;
+  --level-soft: rgba(107, 79, 187, 0.08);
 
   --f-display: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", Georgia, serif;
   --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -41,6 +44,7 @@
     --accent: #8fa2ff; --accent-ink: #0c1322; --accent-soft: rgba(143, 162, 255, 0.14);
     --bull: #33c49a; --bear: #f06672; --neutral: #e0b54a;
     --good-soft: rgba(51, 196, 154, 0.14); --bad-soft: rgba(240, 102, 114, 0.14); --shade: rgba(143, 162, 255, 0.12);
+    --ma: #e0b54a; --level: #c4a8ff; --level-soft: rgba(196, 168, 255, 0.1);
     color-scheme: dark;
   }
 }
@@ -49,6 +53,7 @@
   --accent: #8fa2ff; --accent-ink: #0c1322; --accent-soft: rgba(143, 162, 255, 0.14);
   --bull: #33c49a; --bear: #f06672; --neutral: #e0b54a;
   --good-soft: rgba(51, 196, 154, 0.14); --bad-soft: rgba(240, 102, 114, 0.14); --shade: rgba(143, 162, 255, 0.12);
+    --ma: #e0b54a; --level: #c4a8ff; --level-soft: rgba(196, 168, 255, 0.1);
   color-scheme: dark;
 }
 
@@ -203,6 +208,43 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
+/* setups */
+.legend { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--muted); }
+.key-ma, .key-level { display: inline-block; width: 18px; height: 0; border-top: 2px solid var(--ma); }
+.key-level { border-top: 2px dashed var(--level); margin-left: 0.4rem; }
+.chart .ma { fill: none; stroke: var(--ma); stroke-width: 1.6; }
+.chart .level { stroke: var(--level); stroke-width: 1.5; stroke-dasharray: 6 4; }
+.chart .level-zone { fill: var(--level-soft); }
+.chart .level-text { fill: var(--level); font-weight: 500; }
+.chart .entry { stroke: var(--accent); stroke-width: 1.2; }
+.chart .stop { stroke: var(--bear); stroke-width: 1.2; stroke-dasharray: 2 3; }
+.chart .line-text { font-weight: 500; }
+.checks { display: grid; gap: var(--s-2); }
+.check { display: flex; justify-content: space-between; align-items: center; gap: var(--s-3); background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 0.6rem 0.8rem; }
+.check.right { border-color: var(--bull); background: var(--good-soft); }
+.check.wrong { border-color: var(--bear); background: var(--bad-soft); }
+.check-title { margin: 0; font-weight: 600; }
+.check-desc { margin: 0; color: var(--muted); font-size: 0.82rem; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; flex: none; }
+.seg button { background: none; border: 0; padding: 0.4rem 0.75rem; cursor: pointer; font-weight: 500; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.seg button:disabled { cursor: default; }
+button.primary:disabled { opacity: 0.45; cursor: default; }
+.verdict-line { font-weight: 600; }
+.ok-mark { color: var(--bull); font-weight: 600; }
+.bad-mark { color: var(--bear); font-weight: 600; }
+
+/* sources */
+.cite { font-size: 0.78rem; color: var(--muted); }
+.cite b { font-weight: 500; color: var(--ink); }
+.src-notes { margin: 0; padding: 0.5rem 0.7rem; border-radius: var(--r); background: var(--accent-soft); font-size: 0.84rem; display: grid; gap: 0.3rem; }
+.src-notes p { margin: 0; }
+.sources h4 { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: var(--s-4) 0 var(--s-2); font-weight: 500; }
+.checklist { list-style: none; padding-left: 0 !important; }
+.checklist li { display: block; }
+.checklist .ok-mark, .checklist .bad-mark { display: inline-block; min-width: 2.6rem; }
+
 </style>
 
 </head>
@@ -220,6 +262,7 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
     <nav class="tabs" role="tablist" aria-label="Sections">
       <button role="tab" id="tab-drill" aria-controls="panel-drill" aria-selected="true">Drill</button>
       <button role="tab" id="tab-spot" aria-controls="panel-spot" aria-selected="false">Spot</button>
+      <button role="tab" id="tab-setups" aria-controls="panel-setups" aria-selected="false">Setups</button>
       <button role="tab" id="tab-library" aria-controls="panel-library" aria-selected="false">Library</button>
       <button role="tab" id="tab-progress" aria-controls="panel-progress" aria-selected="false">Progress</button>
     </nav>
@@ -233,13 +276,15 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
         <select id="drill-mode">
           <option value="name">Name the pattern</option>
           <option value="bias">Call the bias</option>
+          <option value="read">Read the candle</option>
         </select>
       </div>
-      <fieldset class="field groups">
+      <fieldset class="field groups" id="drill-groups">
         <legend>Patterns</legend>
         <label><input type="checkbox" id="grp-single" checked> 1-candle</label>
         <label><input type="checkbox" id="grp-double" checked> 2-candle</label>
         <label><input type="checkbox" id="grp-triple" checked> 3-candle</label>
+        <label><input type="checkbox" id="grp-multi" checked> 5-candle</label>
       </fieldset>
       <fieldset class="field groups">
         <legend>Assist</legend>
@@ -285,6 +330,7 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
         <label><input type="checkbox" id="spot-single" checked> 1-candle</label>
         <label><input type="checkbox" id="spot-double" checked> 2-candle</label>
         <label><input type="checkbox" id="spot-triple" checked> 3-candle</label>
+        <label><input type="checkbox" id="spot-multi" checked> 5-candle</label>
       </fieldset>
       <p class="note">Spinning tops are left out here. They appear so often in normal price action that a chart rarely has just one.</p>
     </div>
@@ -310,19 +356,64 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
     </div>
   </section>
 
+  <!-- SETUPS -->
+  <section id="panel-setups" role="tabpanel" aria-labelledby="tab-setups" class="panel" hidden>
+    <div class="setup-intro">
+      <p class="note">A pattern on its own gives no edge. The Monster Guide (pp. 14 and 20) only takes a reversal pattern when three things line up. Grade each chart against them, then check.</p>
+    </div>
+    <div class="scoreline" aria-live="polite">
+      <span><b id="setup-score">0</b>/<span id="setup-total">0</span> graded correctly</span>
+      <span>Streak <b id="setup-streak">0</b></span>
+    </div>
+    <div class="workbench">
+      <figure class="chart-card">
+        <figcaption class="chart-head">
+          <span class="instrument" id="setup-instrument">EUR/USD · H4</span>
+          <span class="legend"><span class="key-ma"></span>20-period average <span class="key-level"></span><span id="setup-level-name">Support</span></span>
+          <span class="ohlc" id="setup-ohlc">Hover a candle for O H L C</span>
+        </figcaption>
+        <div class="chart-wrap"><svg id="setup-chart" class="chart" role="img" aria-label="Candlestick chart with a moving average and a support or resistance level"></svg></div>
+      </figure>
+      <div class="answer-col">
+        <h2 class="prompt">Grade this <span class="target" id="setup-target">Hammer</span></h2>
+        <p class="hint">The pattern is shaded and ends on the last candle. Answer each check.</p>
+        <div class="checks" id="setup-checks">
+          <div class="check" data-check="trend">
+            <div><p class="check-title">With the bigger trend</p><p class="check-desc" id="setup-desc-trend">The 20-period average is rising.</p></div>
+            <div class="seg" role="group" aria-label="With the bigger trend"><button type="button" data-v="yes">Yes</button><button type="button" data-v="no">No</button></div>
+          </div>
+          <div class="check" data-check="level">
+            <div><p class="check-title">At the level</p><p class="check-desc" id="setup-desc-level">The pattern reaches support and closes back above it.</p></div>
+            <div class="seg" role="group" aria-label="At the level"><button type="button" data-v="yes">Yes</button><button type="button" data-v="no">No</button></div>
+          </div>
+          <div class="check" data-check="size">
+            <div><p class="check-title">Bigger than earlier candles</p><p class="check-desc">The last candle’s range is at least 1.3× the average of the 10 before the pattern.</p></div>
+            <div class="seg" role="group" aria-label="Bigger than earlier candles"><button type="button" data-v="yes">Yes</button><button type="button" data-v="no">No</button></div>
+          </div>
+        </div>
+        <button type="button" class="primary" id="setup-check" disabled>Check my grading</button>
+        <div class="feedback" id="setup-feedback" hidden></div>
+        <button type="button" class="primary" id="setup-next" hidden>Next setup</button>
+      </div>
+    </div>
+  </section>
+
   <!-- LIBRARY -->
   <section id="panel-library" role="tabpanel" aria-labelledby="tab-library" class="panel" hidden>
     <div class="library-intro">
       <h2>Pattern library</h2>
-      <p>The rules below are the exact ones the drills use to check every chart. Each example is drawn fresh by the same generator.</p>
+      <p>The rules below are the exact ones the drills use to check every chart. Each card cites the source document it comes from, and notes where the sources disagree.</p>
       <div class="chips" id="lib-filter" role="group" aria-label="Filter patterns">
         <button type="button" class="chip" data-f="all" aria-pressed="true">All</button>
         <button type="button" class="chip" data-f="single" aria-pressed="false">1-candle</button>
         <button type="button" class="chip" data-f="double" aria-pressed="false">2-candle</button>
         <button type="button" class="chip" data-f="triple" aria-pressed="false">3-candle</button>
+        <button type="button" class="chip" data-f="multi" aria-pressed="false">5-candle</button>
         <button type="button" class="chip" data-f="bullish" aria-pressed="false">Bullish</button>
         <button type="button" class="chip" data-f="bearish" aria-pressed="false">Bearish</button>
-        <button type="button" class="chip" data-f="neutral" aria-pressed="false">Indecision</button>
+        <button type="button" class="chip" data-f="reversal" aria-pressed="false">Reversal</button>
+        <button type="button" class="chip" data-f="continuation" aria-pressed="false">Continuation</button>
+        <button type="button" class="chip" data-f="indecision" aria-pressed="false">Indecision</button>
       </div>
     </div>
     <div class="cards" id="lib-cards"></div>
@@ -335,6 +426,12 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
         <li><b>Wait for the close.</b> A candle isn't a pattern until it closes. A hammer half-way through the session can still finish as a bearish candle.</li>
         <li><b>Plan the risk first.</b> Most patterns give a natural stop beyond the wick extreme. Size the position from that distance, not the other way round.</li>
       </ul>
+    </aside>
+    <aside class="forex-notes sources" id="sources">
+      <h3>Sources</h3>
+      <ul id="source-list"></ul>
+      <h4>Problems found in the sources</h4>
+      <ul id="source-issues"></ul>
     </aside>
   </section>
 
@@ -357,7 +454,7 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
   </section>
 
   <footer class="foot">
-    <p>Charts are generated for practice, not live market data. Candlestick patterns describe probabilities, not certainties; treat every one as a prompt to check location, trend and risk.</p>
+    <p>Charts are generated for practice, not live market data. Pattern rules follow <i>The Monster Guide to Candlestick Patterns</i> (Rayner Teo) and the <i>58 Candlestick Patterns PDF Manual</i> (tradingpdf.net), with differences noted in the Library. Candlestick patterns describe probabilities, not certainties; treat every one as a prompt to check location, trend and risk.</p>
   </footer>
 </div>
 
@@ -441,17 +538,26 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
 
   const isDojiBody = (s) => s.body <= 0.1 * s.range;
   const isSmallBody = (s) => s.body > 0.1 * s.range && s.body <= 0.35 * s.range;
-  const hammerShape = (s, a) =>
-    isSmallBody(s) && s.lower >= 2 * s.body && s.lower >= 0.55 * s.range && s.upper <= 0.12 * s.range && s.range >= 0.7 * a;
-  const invertedShape = (s, a) =>
-    isSmallBody(s) && s.upper >= 2 * s.body && s.upper >= 0.55 * s.range && s.lower <= 0.12 * s.range && s.range >= 0.7 * a;
+  // Close position within the range: 0 = at the low, 1 = at the high.
+  const closePos = (k) => (k.c - k.l) / Math.max(k.h - k.l, 1e-12);
+  // Monster Guide (p. 9, p. 16): close in the top (bottom) quarter, long wick about 2-3x the body.
+  function hammerShape(k, a) {
+    const s = shape(k);
+    return isSmallBody(s) && s.lower >= 2 * s.body && s.lower >= 0.55 * s.range && s.upper <= 0.12 * s.range &&
+      s.range >= 0.7 * a && closePos(k) >= 0.75;
+  }
+  function invertedShape(k, a) {
+    const s = shape(k);
+    return isSmallBody(s) && s.upper >= 2 * s.body && s.upper >= 0.55 * s.range && s.lower <= 0.12 * s.range &&
+      s.range >= 0.7 * a && closePos(k) <= 0.25;
+  }
   const isLongBody = (s, a) => s.body >= 0.6 * s.range && s.body >= 0.8 * a;
 
   // ---------- builders (generate an idealised, randomised instance) ----------
 
   function buildHammerLike(rng, last, inverted) {
     const b = R(rng, 0.22, 0.38);
-    const longWick = b * R(rng, 2.4, 3.4) + 0.15;
+    const longWick = b * R(rng, 2.6, 3.4) + 0.3;
     const tiny = R(rng, 0, 0.05);
     const o = last + R(rng, -0.05, 0.05);
     const c = o + (rng() < 0.5 ? b : -b);
@@ -461,6 +567,48 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
   function longCandle(rng, open, dir) {
     const b = R(rng, 1.3, 1.8);
     return mk(open, open + dir * b, R(rng, 0.05, 0.2), R(rng, 0.05, 0.2));
+  }
+
+  // Shared two-candle tests, dir = 1 for bullish, -1 for bearish. j is the second candle.
+  function haramiPair(cs, j, atr, dir) {
+    const p = shape(cs[j - 1]);
+    const s = shape(cs[j]);
+    const outer = dir > 0 ? p.bear : p.bull;
+    const inner = dir > 0 ? s.bull : s.bear;
+    return outer && isLongBody(p, atr) && inner && s.bodyTop <= p.bodyTop && s.bodyBot >= p.bodyBot && s.body <= 0.5 * p.body;
+  }
+  function engulfPair(cs, j, atr, dir) {
+    const p = shape(cs[j - 1]);
+    const s = shape(cs[j]);
+    const first = dir > 0 ? p.bear : p.bull;
+    const second = dir > 0 ? s.bull : s.bear;
+    return first && p.body >= 0.3 * atr && second && s.bodyBot <= p.bodyBot && s.bodyTop >= p.bodyTop && s.body > 1.1 * p.body;
+  }
+  // Rising (dir 1) / Falling (dir -1) Three Methods ending at i.
+  function threeMethods(cs, i, atr, dir) {
+    const a = cs[i - 4];
+    const sa = shape(a);
+    if (!(dir > 0 ? sa.bull : sa.bear) || !isLongBody(sa, atr)) return false;
+    for (let j = i - 3; j <= i - 1; j++) {
+      const s = shape(cs[j]);
+      if (s.range > 0.6 * sa.range || s.body > 0.5 * sa.body || cs[j].h > a.h || cs[j].l < a.l) return false;
+    }
+    const e = shape(cs[i]);
+    if (!(dir > 0 ? e.bull : e.bear) || e.body < 0.6 * e.range || e.body < 0.8 * atr) return false;
+    return dir > 0 ? cs[i].c > a.h : cs[i].c < a.l;
+  }
+  function buildThreeMethods(rng, last, dir) {
+    const a = mk(last, last + dir * R(rng, 1.5, 1.9), R(rng, 0.05, 0.15), R(rng, 0.05, 0.15));
+    const out = [a];
+    let o = a.c - dir * R(rng, 0.1, 0.2);
+    for (let k = 0; k < 3; k++) {
+      const c = o - dir * R(rng, -0.08, 0.3);
+      out.push(mk(o, c, R(rng, 0.04, 0.12), R(rng, 0.04, 0.12)));
+      o = c + R(rng, -0.03, 0.03);
+    }
+    const extreme = dir > 0 ? a.h : a.l;
+    out.push(mk(o, extreme + dir * R(rng, 0.2, 0.45), R(rng, 0.04, 0.12), R(rng, 0.04, 0.12)));
+    return out;
   }
 
   // ---------- pattern catalogue ----------
@@ -557,14 +705,14 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
       confuse: ['hanging-man', 'inverted-hammer', 'dragonfly-doji'],
       rules: [
         'Appears after a decline',
-        'Small body near the top of the range (either colour)',
+        'Small body; price closes in the top quarter of the range (either colour)',
         'Lower wick at least 2× the body, little or no upper wick',
       ],
       meaning:
         'Sellers pushed price well lower, but buyers drove it back up near the open. Selling pressure is fading at the lows.',
       confirm: 'Wait for a close above the hammer’s high. A common stop goes just below the hammer’s low.',
       test(cs, i, ctx) {
-        return ctx.trend === 'down' && hammerShape(shape(cs[i]), ctx.atr);
+        return ctx.trend === 'down' && hammerShape(cs[i], ctx.atr);
       },
       build: (rng, last) => buildHammerLike(rng, last, false),
     },
@@ -578,14 +726,14 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
       confuse: ['hammer', 'shooting-star', 'dragonfly-doji'],
       rules: [
         'Appears after a rally (same shape as a hammer, opposite context)',
-        'Small body near the top of the range',
+        'Small body; price closes in the top quarter of the range',
         'Lower wick at least 2× the body, little or no upper wick',
       ],
       meaning:
         'Price sold off hard within the session before recovering. In an uptrend that dip shows sellers testing the market, an early warning the rally is tiring.',
       confirm: 'Needs a bearish close below the hanging man’s body on the next candle. Without it, the trend usually continues.',
       test(cs, i, ctx) {
-        return ctx.trend === 'up' && hammerShape(shape(cs[i]), ctx.atr);
+        return ctx.trend === 'up' && hammerShape(cs[i], ctx.atr);
       },
       build: (rng, last) => buildHammerLike(rng, last, false),
     },
@@ -599,14 +747,14 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
       confuse: ['shooting-star', 'hammer', 'gravestone-doji'],
       rules: [
         'Appears after a decline',
-        'Small body near the bottom of the range',
+        'Small body; price closes in the bottom quarter of the range',
         'Upper wick at least 2× the body, little or no lower wick',
       ],
       meaning:
         'Buyers attempted a push higher at the lows. They didn’t hold it, but it is the first sign of demand after a sell-off.',
       confirm: 'Weaker than a hammer. Wait for the next candle to close above the inverted hammer’s body.',
       test(cs, i, ctx) {
-        return ctx.trend === 'down' && invertedShape(shape(cs[i]), ctx.atr);
+        return ctx.trend === 'down' && invertedShape(cs[i], ctx.atr);
       },
       build: (rng, last) => buildHammerLike(rng, last, true),
     },
@@ -620,14 +768,14 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
       confuse: ['inverted-hammer', 'gravestone-doji', 'hanging-man'],
       rules: [
         'Appears after a rally (same shape as an inverted hammer, opposite context)',
-        'Small body near the bottom of the range',
+        'Small body; price closes in the bottom quarter of the range',
         'Upper wick at least 2× the body, little or no lower wick',
       ],
       meaning:
         'Buyers spiked price higher, then sellers slammed it back down to the open. Strong rejection of higher prices.',
       confirm: 'Look for the next candle to close below the shooting star’s body. Stops often go above the wick high.',
       test(cs, i, ctx) {
-        return ctx.trend === 'up' && invertedShape(shape(cs[i]), ctx.atr);
+        return ctx.trend === 'up' && invertedShape(cs[i], ctx.atr);
       },
       build: (rng, last) => buildHammerLike(rng, last, true),
     },
@@ -710,7 +858,7 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
       candles: 2,
       signal: 'bullish',
       trend: 'down',
-      confuse: ['piercing-line', 'bullish-harami', 'tweezer-bottom'],
+      confuse: ['piercing-line', 'three-outside-up', 'tweezer-bottom'],
       rules: [
         'Appears after a decline',
         'Candle 1 is bearish',
@@ -740,7 +888,7 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
       candles: 2,
       signal: 'bearish',
       trend: 'up',
-      confuse: ['dark-cloud-cover', 'bearish-harami', 'tweezer-top'],
+      confuse: ['dark-cloud-cover', 'three-outside-down', 'tweezer-top'],
       rules: [
         'Appears after a rally',
         'Candle 1 is bullish',
@@ -770,7 +918,7 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
       candles: 2,
       signal: 'bullish',
       trend: 'down',
-      confuse: ['bullish-engulfing', 'bearish-harami', 'morning-star'],
+      confuse: ['bullish-engulfing', 'three-inside-up', 'morning-star'],
       rules: [
         'Appears after a decline',
         'Candle 1 is a long bearish candle',
@@ -801,7 +949,7 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
       candles: 2,
       signal: 'bearish',
       trend: 'up',
-      confuse: ['bearish-engulfing', 'bullish-harami', 'evening-star'],
+      confuse: ['bearish-engulfing', 'three-inside-down', 'evening-star'],
       rules: [
         'Appears after a rally',
         'Candle 1 is a long bullish candle',
@@ -899,8 +1047,8 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
       confuse: ['tweezer-top', 'bullish-engulfing', 'piercing-line'],
       rules: [
         'Appears after a decline',
-        'Candle 1 is bearish, candle 2 is bullish',
-        'Both candles make the same low (within 5% of an average range)',
+        'Candle 1 shows rejection of lower prices (lower wick ≥ 25% of its range)',
+        'Candle 2 re-tests the same low (within 5% of an average range) and closes bullish',
       ],
       meaning: 'Price tested the same low twice and was rejected both times. That level is acting as support.',
       confirm: 'A close above candle 1’s open confirms it. A stop just under the shared low is common.',
@@ -908,16 +1056,16 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
         const p = shape(cs[i - 1]);
         const s = shape(cs[i]);
         return (
-          ctx.trend === 'down' && p.bear && s.bull && p.body >= 0.3 * ctx.atr && s.body >= 0.2 * ctx.atr &&
+          ctx.trend === 'down' && p.lower >= 0.25 * p.range && p.range >= 0.6 * ctx.atr && s.bull && s.body >= 0.2 * ctx.atr &&
           Math.abs(cs[i - 1].l - cs[i].l) <= 0.05 * ctx.atr
         );
       },
       build(rng, last) {
-        const p = mk(last, last - R(rng, 0.7, 1.0), R(rng, 0.03, 0.12), R(rng, 0.3, 0.5));
+        const p = mk(last, last - R(rng, 1.0, 1.3), R(rng, 0.03, 0.1), R(rng, 0.42, 0.55));
         const pb = p.o - p.c;
         const o = p.c - R(rng, 0.01, 0.05);
-        const c = o + pb * R(rng, 0.35, 0.45);
-        const s = { o, c, h: c + R(rng, 0.03, 0.15), l: p.l + R(rng, -0.02, 0.02) };
+        const c = o + pb * R(rng, 0.38, 0.47);
+        const s = { o, c, h: c + R(rng, 0.05, 0.15), l: p.l + R(rng, -0.02, 0.02) };
         return [p, s];
       },
     },
@@ -931,8 +1079,8 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
       confuse: ['tweezer-bottom', 'bearish-engulfing', 'dark-cloud-cover'],
       rules: [
         'Appears after a rally',
-        'Candle 1 is bullish, candle 2 is bearish',
-        'Both candles make the same high (within 5% of an average range)',
+        'Candle 1 shows rejection of higher prices (upper wick ≥ 25% of its range)',
+        'Candle 2 re-tests the same high (within 5% of an average range) and closes bearish',
       ],
       meaning: 'Price tested the same high twice and was rejected both times. That level is acting as resistance.',
       confirm: 'A close below candle 1’s open confirms it. A stop just above the shared high is common.',
@@ -940,16 +1088,16 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
         const p = shape(cs[i - 1]);
         const s = shape(cs[i]);
         return (
-          ctx.trend === 'up' && p.bull && s.bear && p.body >= 0.3 * ctx.atr && s.body >= 0.2 * ctx.atr &&
+          ctx.trend === 'up' && p.upper >= 0.25 * p.range && p.range >= 0.6 * ctx.atr && s.bear && s.body >= 0.2 * ctx.atr &&
           Math.abs(cs[i - 1].h - cs[i].h) <= 0.05 * ctx.atr
         );
       },
       build(rng, last) {
-        const p = mk(last, last + R(rng, 0.7, 1.0), R(rng, 0.3, 0.5), R(rng, 0.03, 0.12));
+        const p = mk(last, last + R(rng, 1.0, 1.3), R(rng, 0.42, 0.55), R(rng, 0.03, 0.1));
         const pb = p.c - p.o;
         const o = p.c + R(rng, 0.01, 0.05);
-        const c = o - pb * R(rng, 0.35, 0.45);
-        const s = { o, c, h: p.h + R(rng, -0.02, 0.02), l: c - R(rng, 0.03, 0.15) };
+        const c = o - pb * R(rng, 0.38, 0.47);
+        const s = { o, c, h: p.h + R(rng, -0.02, 0.02), l: c - R(rng, 0.05, 0.15) };
         return [p, s];
       },
     },
@@ -964,7 +1112,7 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
       rules: [
         'Appears after a decline',
         'Candle 1 is a long bearish candle',
-        'Candle 2 has a small body at or below candle 1’s close',
+        'Candle 2 is small (body ≤ 30% and range ≤ 60% of candle 1’s) and sits at or below candle 1’s close',
         'Candle 3 is bullish and closes above the midpoint of candle 1’s body',
       ],
       meaning: 'Selling, then hesitation, then a strong buying session. The three-step sequence shows control passing from sellers to buyers.',
@@ -975,7 +1123,7 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
         const s = shape(cs[i]);
         const a = cs[i - 2];
         return (
-          ctx.trend === 'down' && q.bear && isLongBody(q, ctx.atr) && p.body <= 0.3 * q.body &&
+          ctx.trend === 'down' && q.bear && isLongBody(q, ctx.atr) && p.body <= 0.3 * q.body && p.range <= 0.6 * q.range &&
           p.bodyTop <= a.c + 0.1 * q.body && s.bull && cs[i].c >= a.c + 0.5 * q.body
         );
       },
@@ -984,7 +1132,7 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
         const qb = q.o - q.c;
         const po = q.c - R(rng, 0.05, 0.15);
         const pc = po + R(rng, -0.12, 0.12);
-        const p = mk(po, pc, R(rng, 0.1, 0.3), R(rng, 0.1, 0.3));
+        const p = mk(po, pc, R(rng, 0.08, 0.25), R(rng, 0.08, 0.25));
         const so = pc + R(rng, -0.03, 0.03);
         const s = mk(so, q.c + qb * R(rng, 0.6, 0.9), R(rng, 0.15, 0.28), R(rng, 0.12, 0.25));
         return [q, p, s];
@@ -1001,7 +1149,7 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
       rules: [
         'Appears after a rally',
         'Candle 1 is a long bullish candle',
-        'Candle 2 has a small body at or above candle 1’s close',
+        'Candle 2 is small (body ≤ 30% and range ≤ 60% of candle 1’s) and sits at or above candle 1’s close',
         'Candle 3 is bearish and closes below the midpoint of candle 1’s body',
       ],
       meaning: 'Buying, then hesitation, then a strong selling session. Control passes from buyers to sellers at the top.',
@@ -1012,7 +1160,7 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
         const s = shape(cs[i]);
         const a = cs[i - 2];
         return (
-          ctx.trend === 'up' && q.bull && isLongBody(q, ctx.atr) && p.body <= 0.3 * q.body &&
+          ctx.trend === 'up' && q.bull && isLongBody(q, ctx.atr) && p.body <= 0.3 * q.body && p.range <= 0.6 * q.range &&
           p.bodyBot >= a.c - 0.1 * q.body && s.bear && cs[i].c <= a.c - 0.5 * q.body
         );
       },
@@ -1021,7 +1169,7 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
         const qb = q.c - q.o;
         const po = q.c + R(rng, 0.05, 0.15);
         const pc = po + R(rng, -0.12, 0.12);
-        const p = mk(po, pc, R(rng, 0.1, 0.3), R(rng, 0.1, 0.3));
+        const p = mk(po, pc, R(rng, 0.08, 0.25), R(rng, 0.08, 0.25));
         const so = pc + R(rng, -0.03, 0.03);
         const s = mk(so, q.c - qb * R(rng, 0.6, 0.9), R(rng, 0.12, 0.25), R(rng, 0.15, 0.28));
         return [q, p, s];
@@ -1107,6 +1255,164 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
         return out;
       },
     },
+    {
+      id: 'three-inside-up',
+      name: 'Three Inside Up',
+      group: 'triple',
+      candles: 3,
+      signal: 'bullish',
+      trend: 'down',
+      confuse: ['bullish-harami', 'three-outside-up', 'morning-star'],
+      rules: [
+        'Appears after a decline',
+        'Candle 1 is a long bearish candle',
+        'Candle 2 is a small bullish body inside candle 1’s body (a bullish harami)',
+        'Candle 3 is bullish and closes above candle 2’s close',
+      ],
+      meaning: 'A bullish harami followed by a second up-close. The pause in selling has already had one session of follow-through from buyers.',
+      confirm: 'It signals later than the harami alone, in exchange for confirmation. A stop below candle 1’s low is common.',
+      test(cs, i, ctx) {
+        return ctx.trend === 'down' && haramiPair(cs, i - 1, ctx.atr, 1) && cs[i].c > cs[i].o && cs[i].c > cs[i - 1].c;
+      },
+      build(rng, last) {
+        const q = longCandle(rng, last, -1);
+        const qb = q.o - q.c;
+        const po = q.c + qb * R(rng, 0.12, 0.25);
+        const p = mk(po, po + qb * R(rng, 0.18, 0.3), R(rng, 0.05, 0.12), R(rng, 0.05, 0.12));
+        const so = p.c + R(rng, -0.03, 0.03);
+        const s = mk(so, so + R(rng, 0.45, 0.8), R(rng, 0.1, 0.22), R(rng, 0.08, 0.2));
+        return [q, p, s];
+      },
+    },
+    {
+      id: 'three-inside-down',
+      name: 'Three Inside Down',
+      group: 'triple',
+      candles: 3,
+      signal: 'bearish',
+      trend: 'up',
+      confuse: ['bearish-harami', 'three-outside-down', 'evening-star'],
+      rules: [
+        'Appears after a rally',
+        'Candle 1 is a long bullish candle',
+        'Candle 2 is a small bearish body inside candle 1’s body (a bearish harami)',
+        'Candle 3 is bearish and closes below candle 2’s close',
+      ],
+      meaning: 'A bearish harami followed by a second down-close. The stall in buying has already had one session of follow-through from sellers.',
+      confirm: 'It signals later than the harami alone, in exchange for confirmation. A stop above candle 1’s high is common.',
+      test(cs, i, ctx) {
+        return ctx.trend === 'up' && haramiPair(cs, i - 1, ctx.atr, -1) && cs[i].c < cs[i].o && cs[i].c < cs[i - 1].c;
+      },
+      build(rng, last) {
+        const q = longCandle(rng, last, 1);
+        const qb = q.c - q.o;
+        const po = q.c - qb * R(rng, 0.12, 0.25);
+        const p = mk(po, po - qb * R(rng, 0.18, 0.3), R(rng, 0.05, 0.12), R(rng, 0.05, 0.12));
+        const so = p.c + R(rng, -0.03, 0.03);
+        const s = mk(so, so - R(rng, 0.45, 0.8), R(rng, 0.08, 0.2), R(rng, 0.1, 0.22));
+        return [q, p, s];
+      },
+    },
+    {
+      id: 'three-outside-up',
+      name: 'Three Outside Up',
+      group: 'triple',
+      candles: 3,
+      signal: 'bullish',
+      trend: 'down',
+      confuse: ['bullish-engulfing', 'three-inside-up', 'three-white-soldiers'],
+      rules: [
+        'Appears after a decline',
+        'Candle 1 is bearish',
+        'Candle 2 is bullish and its body engulfs candle 1’s body (a bullish engulfing)',
+        'Candle 3 is bullish and closes above candle 2’s close',
+      ],
+      meaning: 'An engulfing reversal followed by another higher close, so the shift to buyers has been confirmed once already.',
+      confirm: 'Entries after candle 3 are further from the low, so the stop below the pattern is wider. Size the position for that.',
+      test(cs, i, ctx) {
+        return ctx.trend === 'down' && engulfPair(cs, i - 1, ctx.atr, 1) && cs[i].c > cs[i].o && cs[i].c > cs[i - 1].c;
+      },
+      build(rng, last) {
+        const q = mk(last, last - R(rng, 0.45, 0.75), R(rng, 0.05, 0.2), R(rng, 0.03, 0.1));
+        const po = q.c - R(rng, 0, 0.05);
+        const p = mk(po, q.o + R(rng, 0.2, 0.45), R(rng, 0.12, 0.25), R(rng, 0.25, 0.4));
+        const so = p.c + R(rng, -0.03, 0.03);
+        const s = mk(so, so + R(rng, 0.4, 0.7), R(rng, 0.1, 0.22), R(rng, 0.1, 0.2));
+        return [q, p, s];
+      },
+    },
+    {
+      id: 'three-outside-down',
+      name: 'Three Outside Down',
+      group: 'triple',
+      candles: 3,
+      signal: 'bearish',
+      trend: 'up',
+      confuse: ['bearish-engulfing', 'three-inside-down', 'three-black-crows'],
+      rules: [
+        'Appears after a rally',
+        'Candle 1 is bullish',
+        'Candle 2 is bearish and its body engulfs candle 1’s body (a bearish engulfing)',
+        'Candle 3 is bearish and closes below candle 2’s close',
+      ],
+      meaning: 'An engulfing reversal followed by another lower close, so the shift to sellers has been confirmed once already.',
+      confirm: 'Entries after candle 3 are further from the high, so the stop above the pattern is wider. Size the position for that.',
+      test(cs, i, ctx) {
+        return ctx.trend === 'up' && engulfPair(cs, i - 1, ctx.atr, -1) && cs[i].c < cs[i].o && cs[i].c < cs[i - 1].c;
+      },
+      build(rng, last) {
+        const q = mk(last, last + R(rng, 0.45, 0.75), R(rng, 0.03, 0.1), R(rng, 0.05, 0.2));
+        const po = q.c + R(rng, 0, 0.05);
+        const p = mk(po, q.o - R(rng, 0.2, 0.45), R(rng, 0.25, 0.4), R(rng, 0.12, 0.25));
+        const so = p.c + R(rng, -0.03, 0.03);
+        const s = mk(so, so - R(rng, 0.4, 0.7), R(rng, 0.1, 0.2), R(rng, 0.1, 0.22));
+        return [q, p, s];
+      },
+    },
+    {
+      id: 'rising-three-methods',
+      name: 'Rising Three Methods',
+      group: 'multi',
+      candles: 5,
+      signal: 'bullish',
+      trend: 'up',
+      confuse: ['falling-three-methods', 'bullish-harami', 'three-white-soldiers'],
+      rules: [
+        'Appears during an uptrend',
+        'Candle 1 is a large bullish candle',
+        'Candles 2–4 have smaller ranges and bodies and stay inside candle 1’s range',
+        'Candle 5 is a large bullish candle that closes above candle 1’s high',
+      ],
+      meaning:
+        'Buyers paused to take profit, but the pullback was shallow and stayed inside the first candle. The fifth candle resumes the trend at a new high. It is the candlestick version of a bull flag.',
+      confirm: 'The Monster Guide uses it after a breakout above resistance: wait for the pattern, then buy the break of its high.',
+      test(cs, i, ctx) {
+        return ctx.trend === 'up' && threeMethods(cs, i, ctx.atr, 1);
+      },
+      build: (rng, last) => buildThreeMethods(rng, last, 1),
+    },
+    {
+      id: 'falling-three-methods',
+      name: 'Falling Three Methods',
+      group: 'multi',
+      candles: 5,
+      signal: 'bearish',
+      trend: 'down',
+      confuse: ['rising-three-methods', 'bearish-harami', 'three-black-crows'],
+      rules: [
+        'Appears during a downtrend',
+        'Candle 1 is a large bearish candle',
+        'Candles 2–4 have smaller ranges and bodies and stay inside candle 1’s range',
+        'Candle 5 is a large bearish candle that closes below candle 1’s low',
+      ],
+      meaning:
+        'Sellers paused to take profit, but the bounce was shallow and stayed inside the first candle. The fifth candle resumes the decline at a new low. It is the candlestick version of a bear flag.',
+      confirm: 'The Monster Guide uses it after a breakdown below support: wait for the pattern, then sell the break of its low.',
+      test(cs, i, ctx) {
+        return ctx.trend === 'down' && threeMethods(cs, i, ctx.atr, -1);
+      },
+      build: (rng, last) => buildThreeMethods(rng, last, -1),
+    },
   ];
 
   const BY_ID = Object.fromEntries(PATTERNS.map((p) => [p.id, p]));
@@ -1165,7 +1471,7 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
 
   const DRIFT = { up: 0.45, down: -0.45, flat: 0 };
 
-  function toMarket(rng, raw) {
+  function toMarket(rng, raw, extra = []) {
     const pair = pick(rng, PAIRS);
     const tf = pick(rng, TIMEFRAMES);
     const scale = tf.atrPips * pair.pip;
@@ -1173,7 +1479,7 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
     const f = 10 ** pair.dp;
     const round = (x) => Math.round((base + x * scale) * f) / f;
     const candles = raw.map((k) => ({ o: round(k.o), h: round(k.h), l: round(k.l), c: round(k.c) }));
-    return { pair, tf, candles };
+    return { pair, tf, candles, extra: extra.map(round) };
   }
 
   function trendFor(rng, def) {
@@ -1244,6 +1550,229 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
     return { trend: ctx.trend, move: +ctx.move.toFixed(2), candles };
   }
 
+  // ---------- sources ----------
+  // Every rule above is traceable to at least one of these documents (or to the
+  // standard definition where a document only lists the name). Disagreements
+  // between them are recorded in `notes` rather than silently resolved.
+
+  const SOURCES = {
+    MG: {
+      short: 'Monster Guide',
+      title: 'The Monster Guide to Candlestick Patterns',
+      author: 'Rayner Teo (TradingwithRayner)',
+      loc: 'page',
+    },
+    TP: {
+      short: '58 Patterns',
+      title: '58 Candlestick Patterns PDF Manual',
+      author: 'tradingpdf.net (printed 25 Dec 2023)',
+      loc: 'entry',
+    },
+  };
+
+  const MG_HARAMI =
+    'The Monster Guide disagrees with the classic reading: Rayner Teo argues the harami works better as a continuation pattern (a large candle in the trend direction, then a small inside candle) and treats it like an inside bar. This trainer tests the classic reversal form, which most references use.';
+  const GAP_NOTE = (side) =>
+    `The 58-pattern manual gives the classic stock-market rule: candle 2 opens ${side}. Spot FX trades around the clock, so that gap almost never forms. This trainer follows the Monster Guide’s version, which has no gap requirement.`;
+
+  const META = {
+    doji: { role: 'indecision', refs: [['MG', 23], ['TP', 9]], notes: ['The Monster Guide places the open and close around the middle of the range. This trainer checks that with a wick of at least 25% on each side.'] },
+    'dragonfly-doji': { role: 'reversal', refs: [['MG', 23], ['TP', 7]] },
+    'gravestone-doji': { role: 'reversal', refs: [['MG', 24], ['TP', 6]] },
+    hammer: { role: 'reversal', refs: [['MG', 9], ['TP', 14]], notes: ['The “top quarter” close and the 2–3× wick come from the Monster Guide.'] },
+    'hanging-man': { role: 'reversal', refs: [['TP', 15]], notes: ['Not in the Monster Guide. The 58-pattern manual defines it as the hammer shape appearing at the end of an uptrend.'] },
+    'inverted-hammer': { role: 'reversal', refs: [['TP', 5]] },
+    'shooting-star': { role: 'reversal', refs: [['MG', 16], ['TP', 4]], notes: ['The “bottom quarter” close and the 2–3× wick come from the Monster Guide.'] },
+    'spinning-top': { role: 'indecision', refs: [['MG', 22], ['TP', 10]] },
+    'bullish-marubozu': { role: 'continuation', refs: [['TP', 2]], notes: ['The 58-pattern manual treats a marubozu as a continuation signal in the direction of the candle.'] },
+    'bearish-marubozu': { role: 'continuation', refs: [['TP', 1]], notes: ['The 58-pattern manual treats a marubozu as a continuation signal in the direction of the candle.'] },
+    'bullish-engulfing': { role: 'reversal', refs: [['MG', 10], ['TP', 25]], notes: ['Both sources compare bodies only and ignore the wicks.'] },
+    'bearish-engulfing': { role: 'reversal', refs: [['MG', 17], ['TP', 24]], notes: ['Both sources compare bodies only and ignore the wicks.'] },
+    'bullish-harami': { role: 'reversal', refs: [['MG', 27]], notes: [MG_HARAMI] },
+    'bearish-harami': { role: 'reversal', refs: [['MG', 28]], notes: [MG_HARAMI] },
+    'piercing-line': { role: 'reversal', refs: [['MG', 11], ['TP', 26]], notes: [GAP_NOTE('below candle 1’s low')] },
+    'dark-cloud-cover': { role: 'reversal', refs: [['MG', 18], ['TP', 23]], notes: [GAP_NOTE('above candle 1’s high')] },
+    'tweezer-bottom': { role: 'reversal', refs: [['MG', 12]], notes: ['Rules follow the Monster Guide. This is not the 58-pattern manual’s Matching Low, which compares the closes of two bearish candles.'] },
+    'tweezer-top': { role: 'reversal', refs: [['MG', 18]] },
+    'morning-star': { role: 'reversal', refs: [['MG', 13], ['TP', 33]], notes: ['The manual’s Morning Doji Star needs a doji that gaps below candle 1. The Monster Guide only asks for a small-range middle candle, which suits gap-free forex charts, so that is the rule used here.'] },
+    'evening-star': { role: 'reversal', refs: [['MG', 19], ['TP', 34]], notes: ['The manual’s Evening Doji Star needs a doji that gaps above candle 1. The Monster Guide only asks for a small-range middle candle, so that is the rule used here.'] },
+    'three-white-soldiers': { role: 'reversal', refs: [], notes: ['Named in the 58-pattern manual’s list, but its entry falls beyond the pages in the PDF. Rules follow the standard definition, mirroring the manual’s Three Black Crows (#35).'] },
+    'three-black-crows': { role: 'reversal', refs: [['TP', 35]] },
+    'three-inside-up': { role: 'reversal', refs: [['TP', 38]], notes: ['Many references require candle 3 to close above candle 1’s open. The manual only requires a close above candle 2’s close, and that is the rule tested here.'] },
+    'three-inside-down': { role: 'reversal', refs: [['TP', 37]], notes: ['Many references require candle 3 to close below candle 1’s open. The manual only requires a close below candle 2’s close, and that is the rule tested here.'] },
+    'three-outside-up': { role: 'reversal', refs: [['TP', 40]] },
+    'three-outside-down': { role: 'reversal', refs: [['TP', 41]] },
+    'rising-three-methods': { role: 'continuation', refs: [['MG', 25]], notes: ['The Monster Guide only says candles 2–4 are smaller. Keeping them inside candle 1’s range is the classic rule, added so the pattern is unambiguous.'] },
+    'falling-three-methods': { role: 'continuation', refs: [['MG', 26]], notes: ['The Monster Guide only says candles 2–4 are smaller. Keeping them inside candle 1’s range is the classic rule, added so the pattern is unambiguous.'] },
+  };
+  for (const p of PATTERNS) {
+    const m = META[p.id] || {};
+    p.role = m.role || 'reversal';
+    p.refs = (m.refs || []).map(([src, n]) => ({ src, n }));
+    p.notes = m.notes || [];
+  }
+
+  // Known problems in the source documents, shown in the Library.
+  const SOURCE_ISSUES = [
+    'The 58-pattern manual says bullish candles are “often colored in (or black)” and bearish ones “empty (white)”. That is backwards: in the standard convention a hollow or white body closes up and a filled or black body closes down. This trainer uses green for up and red for down.',
+    'The 58-pattern manual promises 58 patterns but its pages stop after entry #43, so later entries (Three White Soldiers, Rising and Falling Three Methods and others) are only listed by name.',
+    'The Monster Guide’s Engulfing description says the second candle closes beyond the previous candle’s high (or low), while its recognition rule compares bodies only. This trainer uses the body rule, which both documents share.',
+    'Several patterns in the 58-pattern manual depend on price gaps (Abandoned Baby, Kicking, Doji Stars, Island Reversal). Gaps are rare on 24-hour forex charts, so those patterns are left out.',
+  ];
+
+  // ---------- setup checklist (Monster Guide pp. 14 and 20) ----------
+  // 1. trade with the bigger trend, 2. at a support/resistance level after a
+  // pullback, 3. the reversal candle is larger than the candles before it.
+
+  const SETUP_PATTERNS = ['hammer', 'bullish-engulfing', 'piercing-line', 'tweezer-bottom', 'morning-star',
+    'shooting-star', 'bearish-engulfing', 'dark-cloud-cover', 'tweezer-top', 'evening-star'];
+  const MIRROR_OF = { 'shooting-star': 'hammer', 'bearish-engulfing': 'bullish-engulfing', 'dark-cloud-cover': 'piercing-line', 'tweezer-top': 'tweezer-bottom', 'evening-star': 'morning-star' };
+  const SETUP = { maPeriod: 20, maLookback: 10, maSlope: 1.0, levelTol: 0.6, maxPierce: 1.5, sizeRatio: 1.3, sizeLookback: 10 };
+
+  const mirrorCandle = (k) => ({ o: -k.o, h: -k.l, l: -k.h, c: -k.c });
+
+  function sma(cs, end, n = SETUP.maPeriod) {
+    if (end - n + 1 < 0) return null;
+    let t = 0;
+    for (let j = end - n + 1; j <= end; j++) t += cs[j].c;
+    return t / n;
+  }
+
+  // Direction of the 20-period moving average over the 10 candles before `start`.
+  function bigTrend(cs, start) {
+    const atr = avgRange(cs, start);
+    const now = sma(cs, start - 1);
+    const then = sma(cs, start - 1 - SETUP.maLookback);
+    if (now === null || then === null) return { dir: 'flat', slope: 0 };
+    const slope = (now - then) / atr;
+    return { dir: slope >= SETUP.maSlope ? 'up' : slope <= -SETUP.maSlope ? 'down' : 'flat', slope };
+  }
+
+  function evaluateSetup(cs, i, id, level) {
+    const def = BY_ID[id];
+    const start = i - def.candles + 1;
+    const atr = avgRange(cs, start);
+    const bull = def.signal === 'bullish';
+    const t = bigTrend(cs, start);
+    let ext = bull ? Infinity : -Infinity;
+    for (let j = start; j <= i; j++) ext = bull ? Math.min(ext, cs[j].l) : Math.max(ext, cs[j].h);
+    // distance from the level, in average ranges, measured away from the level (positive = has not reached it)
+    const dist = (bull ? ext - level : level - ext) / atr;
+    const closedRightSide = bull ? cs[i].c >= level : cs[i].c <= level;
+    const before = avgRange(cs, start, SETUP.sizeLookback);
+    const ratio = (cs[i].h - cs[i].l) / before;
+    const res = {
+      trend: { ok: t.dir === (bull ? 'up' : 'down'), dir: t.dir, slope: t.slope },
+      level: { ok: dist <= SETUP.levelTol && dist >= -SETUP.maxPierce && closedRightSide, dist, closedRightSide },
+      size: { ok: ratio >= SETUP.sizeRatio, ratio },
+      extreme: ext,
+      atr,
+    };
+    res.pass = res.trend.ok && res.level.ok && res.size.ok;
+    return res;
+  }
+
+  // Bullish construction in "u" units; bearish setups are mirrored.
+  function setupRaw(rng, baseId, want) {
+    const out = [];
+    const push = (arr) => { out.push(...arr); return arr[arr.length - 1].c; };
+    let last, level;
+    if (want.trend) {
+      // uptrend: old resistance (leg 1 high) becomes support on the pullback
+      last = push(series(rng, 0, 8, 0));
+      const leg1 = series(rng, last, 8, 0.5);
+      level = Math.max(...leg1.map((k) => k.h));
+      last = push(leg1);
+      last = push(series(rng, last, 3, -0.35));
+      last = push(series(rng, last, 11, 0.6));
+    } else {
+      // downtrend: price falls back to an old base low
+      last = push(series(rng, 0, 8, 0));
+      level = Math.min(...out.map((k) => k.l));
+      last = push(series(rng, last, 12, 0.6));
+    }
+    // Build the pattern first (relative to 0) so the pullback can end where its extreme lands.
+    const scale = want.size ? R(rng, 1.5, 1.9) : R(rng, 0.75, 0.95);
+    const pat = BY_ID[baseId].build(rng, 0).map((k) => ({ o: k.o * scale, h: k.h * scale, l: k.l * scale, c: k.c * scale }));
+    const extOff = Math.min(...pat.map((k) => k.l));
+    const target = level - extOff + (want.level ? R(rng, -0.5, 0.3) : R(rng, 1.2, 2.2));
+    let n = 0;
+    while ((last > target || n < 6) && n < 18) { last = push(series(rng, last, 1, -0.5)); n++; }
+    if (last > target + 0.4) return null;
+    out.push(...pat.map((k) => ({ o: k.o + last, h: k.h + last, l: k.l + last, c: k.c + last })));
+    return { candles: out, level };
+  }
+
+  // want = { trend, level, size } booleans: which checks the chart should pass.
+  function generateSetup(id, rng, want) {
+    const def = BY_ID[id];
+    if (!SETUP_PATTERNS.includes(id)) throw new Error('Not a setup pattern: ' + id);
+    const baseId = MIRROR_OF[id] || id;
+    for (let attempt = 0; attempt < 1500; attempt++) {
+      const raw = setupRaw(rng, baseId, want);
+      if (!raw) continue;
+      let { candles, level } = raw;
+      if (MIRROR_OF[id]) { candles = candles.map(mirrorCandle); level = -level; }
+      const m = toMarket(rng, candles, [level]);
+      const i = m.candles.length - 1;
+      if (!matches(m.candles, i, id)) continue;
+      const ev = evaluateSetup(m.candles, i, id, m.extra[0]);
+      if (ev.trend.ok !== want.trend || ev.level.ok !== want.level || ev.size.ok !== want.size) continue;
+      return { pair: m.pair, tf: m.tf, candles: m.candles, id, index: i, start: i - def.candles + 1, level: m.extra[0], evaluation: ev, attempts: attempt + 1 };
+    }
+    throw new Error('Could not generate setup: ' + id + ' ' + JSON.stringify(want));
+  }
+
+  // ---------- reading a single candle (Monster Guide pp. 32-35) ----------
+  // 1. body colour = who is in control, 2. wick length = rejection,
+  // 3. body-to-wick ratio = the whole story.
+
+  const READ_KINDS = [
+    { id: 'buyers', label: 'Buyers in control', bias: 'bullish', why: 'A strong close near the high with a short upper wick: buyers held the gains.' },
+    { id: 'sellers', label: 'Sellers in control', bias: 'bearish', why: 'A strong close near the low with a short lower wick: sellers held the losses.' },
+    { id: 'reject-high', label: 'Higher prices rejected', bias: 'bearish', why: 'The long upper wick shows sellers pushed price back down. That outweighs the colour of a small body.' },
+    { id: 'reject-low', label: 'Lower prices rejected', bias: 'bullish', why: 'The long lower wick shows buyers pushed price back up. That outweighs the colour of a small body.' },
+    { id: 'indecision', label: 'Indecision', bias: 'neutral', why: 'A tiny body with similar wicks on both sides: neither side won the session.' },
+  ];
+
+  function classifyCandle(k) {
+    const s = shape(k);
+    const out = [];
+    if (s.bull && s.body >= 0.6 * s.range && s.upper <= 0.15 * s.range) out.push('buyers');
+    if (s.bear && s.body >= 0.6 * s.range && s.lower <= 0.15 * s.range) out.push('sellers');
+    if (s.upper >= 0.55 * s.range) out.push('reject-high');
+    if (s.lower >= 0.55 * s.range) out.push('reject-low');
+    if (s.body <= 0.2 * s.range && s.upper >= 0.3 * s.range && s.lower >= 0.3 * s.range) out.push('indecision');
+    return out;
+  }
+
+  function buildRead(rng, last, kind) {
+    const o = last + R(rng, -0.03, 0.03);
+    const dir = rng() < 0.6 ? 1 : -1; // small bodies lean against the wick more often: the trap the guide warns about
+    switch (kind) {
+      case 'buyers': return mk(o, o + R(rng, 0.9, 1.4), R(rng, 0, 0.12), R(rng, 0, 0.35));
+      case 'sellers': return mk(o, o - R(rng, 0.9, 1.4), R(rng, 0, 0.35), R(rng, 0, 0.12));
+      case 'reject-high': return mk(o, o + dir * R(rng, 0.1, 0.35), R(rng, 0.9, 1.4), R(rng, 0, 0.15));
+      case 'reject-low': return mk(o, o - dir * R(rng, 0.1, 0.35), R(rng, 0, 0.15), R(rng, 0.9, 1.4));
+      default: {
+        const w = R(rng, 0.45, 0.7);
+        return mk(o, o + R(rng, -0.12, 0.12), w * R(rng, 0.85, 1.15), w * R(rng, 0.85, 1.15));
+      }
+    }
+  }
+
+  function generateRead(rng, kind) {
+    for (let attempt = 0; attempt < 300; attempt++) {
+      const ctx = series(rng, 0, 14, 0);
+      const k = buildRead(rng, ctx[ctx.length - 1].c, kind);
+      const m = toMarket(rng, ctx.concat([k]));
+      const i = m.candles.length - 1;
+      const got = classifyCandle(m.candles[i]);
+      if (got.length === 1 && got[0] === kind) return { ...m, kind, index: i, start: i };
+    }
+    throw new Error('Could not generate candle: ' + kind);
+  }
+
   return {
     PATTERNS,
     BY_ID,
@@ -1258,11 +1787,22 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
     generateDrill,
     generateSpot,
     explain,
+    SOURCES,
+    SOURCE_ISSUES,
+    SETUP,
+    SETUP_PATTERNS,
+    sma,
+    bigTrend,
+    evaluateSetup,
+    generateSetup,
+    READ_KINDS,
+    classifyCandle,
+    generateRead,
     _internal: { series, mk, TREND_LOOKBACK, TREND_THRESHOLD },
   };
 });
 
-/* Wick Reader UI: drill, spot, library and progress views. */
+/* Wick Reader UI: drill, spot, setups, library and progress views. */
 (function () {
   'use strict';
   const L = window.CandleLab;
@@ -1274,6 +1814,8 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const BIAS_LABEL = { bullish: 'Bullish', bearish: 'Bearish', neutral: 'Indecision' };
   const TREND_LABEL = { down: 'after a decline', up: 'after a rally', null: 'in any trend' };
+  const ROLE_LABEL = { reversal: 'Reversal', continuation: 'Continuation', indecision: 'Indecision' };
+  const GROUPS = ['single', 'double', 'triple', 'multi'];
 
   // ---------- persistence (per-viewer convenience only) ----------
   const KEY = 'wick-reader.v1';
@@ -1282,12 +1824,16 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
   }
   const saved = load();
   const stats = saved.stats || {};
-  const prefs = Object.assign(
-    { mode: 'name', groups: { single: true, double: true, triple: true }, spotGroups: { single: true, double: true, triple: true }, highlight: true, adaptive: true, tab: 'drill', best: 0 },
-    saved.prefs || {}
-  );
+  const allGroups = () => ({ single: true, double: true, triple: true, multi: true });
+  const sp = saved.prefs || {};
+  const prefs = Object.assign({ mode: 'name', highlight: true, adaptive: true, tab: 'drill', best: 0 }, sp, {
+    groups: Object.assign(allGroups(), sp.groups),
+    spotGroups: Object.assign(allGroups(), sp.spotGroups),
+  });
+  // Counters for the modes that are not tied to one pattern.
+  const extra = Object.assign({ read: { a: 0, c: 0 }, setup: { a: 0, c: 0 } }, saved.extra);
   function persist() {
-    try { localStorage.setItem(KEY, JSON.stringify({ stats, prefs })); } catch (e) { /* storage unavailable */ }
+    try { localStorage.setItem(KEY, JSON.stringify({ stats, prefs, extra })); } catch (e) { /* storage unavailable */ }
   }
   function stat(id) {
     return (stats[id] = stats[id] || { a: 0, c: 0, sa: 0, sc: 0, mix: {} });
@@ -1341,6 +1887,9 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
 
     let lo = Infinity, hi = -Infinity;
     for (const k of cs) { lo = Math.min(lo, k.l); hi = Math.max(hi, k.h); }
+    for (const p of [opts.level && opts.level.price, ...(opts.lines || []).map((l) => l.price)]) {
+      if (typeof p === 'number') { lo = Math.min(lo, p); hi = Math.max(hi, p); }
+    }
     const span = hi - lo || 1;
     lo -= span * 0.06; hi += span * 0.06;
     const y = (p) => pad.t + ((hi - p) / (hi - lo)) * ph;
@@ -1373,6 +1922,19 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
       }
     }
 
+    if (opts.level) {
+      const { price, band, label } = opts.level;
+      if (band) el('rect', { class: 'level-zone', x: pad.l, width: pw, y: y(price + band), height: Math.max(1, y(price - band) - y(price + band)) }, svg);
+      el('line', { class: 'level', x1: pad.l, x2: pad.l + pw, y1: y(price), y2: y(price) }, svg);
+      const t = el('text', { class: 'level-text', x: pad.l + 4, y: y(price) - 5 }, svg);
+      t.textContent = label;
+    }
+    if (opts.ma) {
+      const pts = [];
+      cs.forEach((_, i) => { const v = L.sma(cs, i); if (v !== null) pts.push(`${x(i).toFixed(1)},${y(v).toFixed(1)}`); });
+      if (pts.length > 1) el('polyline', { class: 'ma', points: pts.join(' ') }, svg);
+    }
+
     const hover = el('rect', { class: 'hover-col', x: 0, y: pad.t, width: slot, height: ph, visibility: 'hidden' }, svg);
     const marks = el('g', {}, svg);
     for (const m of opts.marks || []) {
@@ -1387,6 +1949,12 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
       const h = Math.max(1, Math.abs(y(k.o) - y(k.c)));
       el('rect', { class: cls, x: x(i) - bw / 2, y: top, width: bw, height: h, 'stroke-width': 0 }, svg);
     });
+
+    for (const ln of opts.lines || []) {
+      el('line', { class: ln.cls, x1: x(cs.length - 1) - slot * 6, x2: pad.l + pw, y1: y(ln.price), y2: y(ln.price) }, svg);
+      const t = el('text', { class: 'line-text', x: x(cs.length - 1) - slot * 6, y: y(ln.price) + (ln.below ? 13 : -4) }, svg);
+      t.textContent = ln.label;
+    }
 
     if (!compact && opts.lastTag !== false) {
       const last = cs[cs.length - 1].c;
@@ -1457,6 +2025,17 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
     return `<ul class="measure">${rows.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>`;
   }
 
+  function citeHtml(def) {
+    const refs = def.refs.map((r) => {
+      const src = L.SOURCES[r.src];
+      return `<b>${esc(src.short)}</b> ${src.loc === 'page' ? 'p. ' : '#'}${r.n}`;
+    });
+    return `<p class="cite">Source: ${refs.length ? refs.join(' · ') : 'standard definition'}</p>`;
+  }
+  function notesHtml(def) {
+    return def.notes.length ? `<div class="src-notes">${def.notes.map((n) => `<p>${esc(n)}</p>`).join('')}</div>` : '';
+  }
+
   function lessonHtml(def) {
     return `
       <p class="label">How to recognise it</p>
@@ -1464,7 +2043,8 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
       <p class="label">What it suggests</p>
       <p>${esc(def.meaning)}</p>
       <p class="label">Before acting</p>
-      <p>${esc(def.confirm)}</p>`;
+      <p>${esc(def.confirm)}</p>
+      ${notesHtml(def)}${citeHtml(def)}`;
   }
 
   function weightedPick(pool, kind) {
@@ -1507,13 +2087,25 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
   }
 
   function newDrill() {
-    const target = weightedPick(drillPool(), 'drill');
-    drill.lastId = target.id;
-    drill.q = L.generateDrill(target.id, rng);
-    drill.q.options = buildOptions(drill.q);
+    const reading = prefs.mode === 'read';
+    if (reading) {
+      const kinds = L.READ_KINDS.filter((k) => k.id !== drill.lastKind);
+      const kind = kinds[Math.floor(rng() * kinds.length)];
+      drill.lastKind = kind.id;
+      drill.q = L.generateRead(rng, kind.id);
+      drill.q.options = L.READ_KINDS.map((k) => ({ value: k.id, label: k.label }));
+    } else {
+      const target = weightedPick(drillPool(), 'drill');
+      drill.lastId = target.id;
+      drill.q = L.generateDrill(target.id, rng);
+      drill.q.options = buildOptions(drill.q);
+    }
     drill.answered = false;
-    $('drill-prompt').textContent = prefs.mode === 'bias' ? 'Which way does this pattern lean?' : 'Which pattern just formed?';
-    $('drill-hint').textContent = (prefs.mode === 'bias' ? 'The pattern ends on the last candle. Keys 1–3 answer' : 'The pattern ends on the last candle. Keys 1–4 answer') + ', Enter moves on.';
+    $('drill-groups').hidden = reading;
+    $('drill-focus').hidden = reading || !drill.focus;
+    const n = drill.q.options.length;
+    $('drill-prompt').textContent = reading ? 'What is the last candle telling you?' : prefs.mode === 'bias' ? 'Which way does this pattern lean?' : 'Which pattern just formed?';
+    $('drill-hint').textContent = (reading ? 'Judge the body and both wicks together.' : 'The pattern ends on the last candle.') + ` Keys 1–${n} answer, Enter moves on.`;
     $('drill-feedback').hidden = true;
     $('drill-next').hidden = true;
     drawDrill();
@@ -1539,9 +2131,49 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
     });
   }
 
+  function answerRead(value) {
+    const q = drill.q;
+    const kind = L.READ_KINDS.find((k) => k.id === q.kind);
+    const ok = value === q.kind;
+    extra.read.a++;
+    if (ok) extra.read.c++;
+    drill.total++;
+    if (ok) { drill.score++; drill.streak++; } else drill.streak = 0;
+    prefs.best = Math.max(prefs.best, drill.streak);
+    persist();
+    for (const b of $('drill-options').children) {
+      b.disabled = true;
+      if (b.dataset.value === q.kind) b.classList.add('correct');
+      else if (b.dataset.value === value) b.classList.add('wrong');
+      else b.classList.add('dim');
+    }
+    const sh = L.shape(q.candles[q.index]);
+    const pct = (v) => Math.round((100 * v) / sh.range);
+    const colour = sh.bull ? 'bullish' : sh.bear ? 'bearish' : 'flat';
+    const fb = $('drill-feedback');
+    fb.className = 'feedback ' + (ok ? 'ok' : 'bad');
+    fb.innerHTML = `<p class="verdict">${ok ? 'Correct.' : 'Not this time.'}</p>
+      <h3>${esc(kind.label)} ${biasChip(kind.bias)}</h3>
+      <p>${esc(kind.why)}</p>
+      <p class="label">What the candle shows</p>
+      <ul class="measure"><li>${colour} close, body ${pct(sh.body)}%, upper wick ${pct(sh.upper)}%, lower wick ${pct(sh.lower)}% of the range</li></ul>
+      <p class="label">Reading any candle</p>
+      <ul>
+        <li>The colour of the body tells you who won the session.</li>
+        <li>A long wick shows rejection: buyers or sellers pushed price back.</li>
+        <li>Weigh the body against the wicks. A long upper wick over a small bullish body is still a bearish story.</li>
+      </ul>
+      <p class="cite">Source: <b>Monster Guide</b> pp. 32–35. Thresholds: “in control” needs a body ≥ 60% of the range; “rejected” needs a wick ≥ 55%; “indecision” needs a body ≤ 20% with both wicks ≥ 30%.</p>`;
+    fb.hidden = false;
+    $('drill-next').hidden = false;
+    $('drill-next').focus({ preventScroll: true });
+    updateScores();
+  }
+
   function answerDrill(value) {
     if (drill.answered) return;
     drill.answered = true;
+    if (prefs.mode === 'read') { drawDrill(true); answerRead(value); return; }
     const q = drill.q;
     const def = BY_ID[q.id];
     const s = stat(q.id);
@@ -1647,7 +2279,125 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
     updateScores();
   }
 
+  // ---------- setups (Monster Guide checklist) ----------
+  const setup = { q: null, answers: {}, done: false, score: 0, total: 0, streak: 0 };
+  const CHECKS = ['trend', 'level', 'size'];
+
+  function newSetup() {
+    const ids = L.SETUP_PATTERNS.filter((id) => id !== (setup.q && setup.q.id));
+    const id = ids[Math.floor(rng() * ids.length)];
+    let want;
+    if (rng() < 0.4) want = { trend: true, level: true, size: true };
+    else {
+      do want = { trend: rng() < 0.5, level: rng() < 0.5, size: rng() < 0.5 };
+      while (want.trend && want.level && want.size);
+    }
+    setup.q = L.generateSetup(id, rng, want);
+    setup.answers = {};
+    setup.done = false;
+    const def = BY_ID[id];
+    const bull = def.signal === 'bullish';
+    $('setup-target').textContent = def.name;
+    $('setup-instrument').textContent = `${setup.q.pair.symbol} · ${setup.q.tf.tf}`;
+    $('setup-level-name').textContent = bull ? 'Support' : 'Resistance';
+    $('setup-desc-trend').textContent = bull ? 'The 20-period average is rising (slope ≥ +1.0 average ranges over 10 candles).' : 'The 20-period average is falling (slope ≤ −1.0 average ranges over 10 candles).';
+    $('setup-desc-level').textContent = bull
+      ? 'The pattern’s low reaches the shaded support zone (or dips up to 1.5 average ranges through it) and the pattern closes back above support.'
+      : 'The pattern’s high reaches the shaded resistance zone (or pokes up to 1.5 average ranges through it) and the pattern closes back below resistance.';
+    for (const row of $('setup-checks').children) {
+      row.classList.remove('right', 'wrong');
+      for (const b of row.querySelectorAll('button')) { b.setAttribute('aria-pressed', 'false'); b.disabled = false; }
+    }
+    $('setup-check').disabled = true;
+    $('setup-check').hidden = false;
+    $('setup-feedback').hidden = true;
+    $('setup-next').hidden = true;
+    drawSetup();
+  }
+
+  function drawSetup(lines) {
+    const q = setup.q;
+    const bull = BY_ID[q.id].signal === 'bullish';
+    renderChart($('setup-chart'), q, {
+      shade: [q.start, q.index],
+      ma: true,
+      level: { price: q.level, band: L.SETUP.levelTol * q.evaluation.atr, label: bull ? 'Support' : 'Resistance' },
+      lines,
+      ohlcEl: $('setup-ohlc'),
+    });
+  }
+
+  function checkSetup() {
+    if (setup.done || CHECKS.some((c) => !setup.answers[c])) return;
+    setup.done = true;
+    const q = setup.q;
+    const def = BY_ID[q.id];
+    const ev = q.evaluation;
+    const bull = def.signal === 'bullish';
+    let right = 0;
+    for (const row of $('setup-checks').children) {
+      const c = row.dataset.check;
+      const ok = (setup.answers[c] === 'yes') === ev[c].ok;
+      if (ok) right++;
+      row.classList.add(ok ? 'right' : 'wrong');
+      for (const b of row.querySelectorAll('button')) b.disabled = true;
+    }
+    const allRight = right === 3;
+    extra.setup.a++;
+    if (allRight) extra.setup.c++;
+    setup.total++;
+    if (allRight) { setup.score++; setup.streak++; } else setup.streak = 0;
+    persist();
+
+    const sign = (v) => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(1);
+    const mark = (ok) => (ok ? '<span class="ok-mark">Pass</span>' : '<span class="bad-mark">Fail</span>');
+    const levelWord = bull ? 'support' : 'resistance';
+    const extWord = bull ? 'low' : 'high';
+    const d = ev.level.dist;
+    const where = d > 0 ? `${d.toFixed(1)} average ranges short of ${levelWord}` : `${Math.abs(d).toFixed(1)} average ranges through ${levelWord}`;
+    const closeWord = ev.level.closedRightSide ? `closed back ${bull ? 'above' : 'below'} it` : `closed on the wrong side of it`;
+    const rows = [
+      `${mark(ev.trend.ok)} Bigger trend: the 20-period average is ${ev.trend.dir === 'flat' ? 'flat' : ev.trend.dir === 'up' ? 'rising' : 'falling'} (${sign(ev.trend.slope)} average ranges over 10 candles).`,
+      `${mark(ev.level.ok)} Level: the pattern ${extWord} is ${where}, and it ${closeWord}.`,
+      `${mark(ev.size.ok)} Size: the last candle is ${ev.size.ratio.toFixed(1)}× the average range of the 10 candles before the pattern.`,
+    ];
+    let html = `<p class="verdict">${allRight ? 'All three checks graded correctly.' : `${right} of 3 checks graded correctly.`}</p>
+      <p class="verdict-line">By the checklist: ${ev.pass ? 'take the trade.' : 'skip it.'}</p>
+      <ul class="checklist">${rows.map((r) => `<li>${r}</li>`).join('')}</ul>`;
+    let lines;
+    if (ev.pass) {
+      const k = q.candles[q.index];
+      const pip = q.pair.pip;
+      const buffer = Math.max(2 * pip, Math.round((0.1 * ev.atr) / pip) * pip);
+      const stop = bull ? ev.extreme - buffer : ev.extreme + buffer;
+      const entry = k.c;
+      const risk = Math.abs(entry - stop) / pip;
+      const dp = q.pair.dp;
+      lines = [
+        { price: entry, cls: 'entry', label: 'Entry', below: !bull },
+        { price: stop, cls: 'stop', label: 'Stop', below: bull },
+      ];
+      html += `<p class="label">Trade plan</p>
+        <p>${bull ? 'Buy' : 'Sell'} at the next candle’s open (about ${entry.toFixed(dp)}). Stop ${bull ? 'below' : 'above'} the pattern ${extWord} at ${stop.toFixed(dp)}: ${risk.toFixed(1)} pips of risk. Size the position from that distance.</p>`;
+    } else {
+      html += `<p>A ${esc(def.name)} that fails a check is a pattern without an edge. The guide’s advice is to wait for one that lines up.</p>`;
+    }
+    html += `<p class="cite">Source: <b>Monster Guide</b> pp. 14 and 20 (trend, pullback to support or resistance, a pattern larger than the earlier candles, entry on the next candle’s open). The guide states these in words; the numbers above are this trainer’s way of making them measurable.</p>`;
+    drawSetup(lines);
+    const fb = $('setup-feedback');
+    fb.className = 'feedback ' + (allRight ? 'ok' : 'bad');
+    fb.innerHTML = html;
+    fb.hidden = false;
+    $('setup-check').hidden = true;
+    $('setup-next').hidden = false;
+    $('setup-next').focus({ preventScroll: true });
+    updateScores();
+  }
+
   function updateScores() {
+    $('setup-score').textContent = setup.score;
+    $('setup-total').textContent = setup.total;
+    $('setup-streak').textContent = setup.streak;
     $('drill-score').textContent = drill.score;
     $('drill-total').textContent = drill.total;
     $('drill-streak').textContent = drill.streak;
@@ -1666,15 +2416,17 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
       card.className = 'card';
       card.dataset.group = def.group;
       card.dataset.signal = def.signal;
+      card.dataset.role = def.role;
       const ex = L.generateDrill(def.id, L.mulberry32(1000 + n * 7919), { length: 12 });
       card.innerHTML = `
         <div class="card-art"><svg class="chart" role="img" aria-label="Example ${esc(def.name)}"></svg></div>
         <div class="card-head"><h3>${esc(def.name)}</h3>${biasChip(def.signal)}</div>
         <div class="card-body">
-          <p class="card-meta">${def.candles} candle${def.candles > 1 ? 's' : ''} · ${TREND_LABEL[def.trend]}</p>
+          <p class="card-meta">${def.candles} candle${def.candles > 1 ? 's' : ''} · ${TREND_LABEL[def.trend]} · ${ROLE_LABEL[def.role]}</p>
           <ul>${def.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
           <p class="label">What it suggests</p><p>${esc(def.meaning)}</p>
           <p class="label">Before acting</p><p>${esc(def.confirm)}</p>
+          ${notesHtml(def)}${citeHtml(def)}
         </div>
         <div class="card-foot"><span class="card-meta">Shaded: the pattern</span><button type="button" class="ghost">Practise this</button></div>`;
       renderChart(card.querySelector('svg'), ex, { compact: true, width: 320, height: 150, shade: [ex.start, ex.index] });
@@ -1683,10 +2435,22 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
     });
   }
 
+  function buildSources() {
+    const count = (k) => PATTERNS.filter((p) => p.refs.some((r) => r.src === k)).length;
+    const used = {
+      MG: `Cited by ${count('MG')} patterns, plus the setup checklist and the candle-reading principles.`,
+      TP: `Cited by ${count('TP')} patterns, including Three Inside and Three Outside, Hanging Man and Inverted Hammer.`,
+    };
+    $('source-list').innerHTML = Object.entries(L.SOURCES).map(([k, s]) =>
+      `<li><b>${esc(s.title)}</b>, ${esc(s.author)}. ${esc(used[k])}</li>`).join('') +
+      '<li>Where the sources describe a shape in words (“small body”, “long shadow”), this trainer turns it into a number, shown in each rule, so every chart is checked the same way.</li>';
+    $('source-issues').innerHTML = L.SOURCE_ISSUES.map((t) => `<li>${esc(t)}</li>`).join('');
+  }
+
   function filterLibrary(f) {
     for (const b of $('lib-filter').children) b.setAttribute('aria-pressed', String(b.dataset.f === f));
     for (const c of $('lib-cards').children) {
-      c.hidden = !(f === 'all' || c.dataset.group === f || c.dataset.signal === f);
+      c.hidden = !(f === 'all' || c.dataset.group === f || c.dataset.signal === f || c.dataset.role === f);
     }
   }
 
@@ -1716,8 +2480,10 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
     const parts = [];
     if (a) parts.push(`Drill: ${c}/${a} correct (${Math.round((100 * c) / a)}%)`);
     if (sa) parts.push(`Spot: ${sc}/${sa} found (${Math.round((100 * sc) / sa)}%)`);
+    if (extra.read.a) parts.push(`Candle reading: ${extra.read.c}/${extra.read.a} (${Math.round((100 * extra.read.c) / extra.read.a)}%)`);
+    if (extra.setup.a) parts.push(`Setups: ${extra.setup.c}/${extra.setup.a} fully graded (${Math.round((100 * extra.setup.c) / extra.setup.a)}%)`);
     if (tried.length && tried[0].s.c < tried[0].s.a) parts.push(`Weakest so far: ${tried[0].def.name}`);
-    $('prog-summary').textContent = parts.length ? parts.join(' · ') + '.' : 'No answers yet. Results from Drill and Spot appear here, saved in this browser only.';
+    $('prog-summary').textContent = parts.length ? parts.join(' · ') + '.' : 'No answers yet. Results from Drill, Spot and Setups appear here, saved in this browser only.';
 
     $('prog-rows').innerHTML = rows.map(({ def, s, mix }) => `
       <tr>
@@ -1731,7 +2497,7 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
   }
 
   // ---------- tabs ----------
-  const TABS = ['drill', 'spot', 'library', 'progress'];
+  const TABS = ['drill', 'spot', 'setups', 'library', 'progress'];
   function showTab(name) {
     if (!TABS.includes(name)) name = 'drill';
     TABS.forEach((t) => {
@@ -1741,16 +2507,17 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
     });
     prefs.tab = name;
     persist();
-    const svg = $(name + '-chart');
+    const svg = $(name.replace(/s$/, '') + '-chart');
     if (svg && svg._render) renderChart(svg, ...svg._render); // re-measure now the panel is visible
     if (name === 'spot' && !spot.q) newSpot();
+    if (name === 'setups' && !setup.q) newSetup();
     if (name === 'progress') renderProgress();
   }
 
   // ---------- wiring ----------
   function init() {
     $('drill-mode').value = prefs.mode;
-    ['single', 'double', 'triple'].forEach((g) => {
+    GROUPS.forEach((g) => {
       $('grp-' + g).checked = prefs.groups[g];
       $('spot-' + g).checked = prefs.spotGroups[g];
       $('grp-' + g).addEventListener('change', (e) => { prefs.groups[g] = e.target.checked; setFocus(null); persist(); newDrill(); });
@@ -1765,6 +2532,16 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
     $('drill-next').addEventListener('click', newDrill);
     $('spot-next').addEventListener('click', newSpot);
     $('spot-reveal').addEventListener('click', () => pickSpot(-1, true));
+    $('setup-next').addEventListener('click', newSetup);
+    $('setup-check').addEventListener('click', checkSetup);
+    $('setup-checks').addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-v]');
+      if (!b || setup.done) return;
+      const row = b.closest('[data-check]');
+      setup.answers[row.dataset.check] = b.dataset.v;
+      for (const x of row.querySelectorAll('button')) x.setAttribute('aria-pressed', String(x === b));
+      $('setup-check').disabled = CHECKS.some((c) => !setup.answers[c]);
+    });
 
     TABS.forEach((t, n) => {
       const b = $('tab-' + t);
@@ -1783,6 +2560,8 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
     $('prog-reset-no').addEventListener('click', () => { $('prog-confirm').hidden = true; $('prog-reset').hidden = false; });
     $('prog-reset-yes').addEventListener('click', () => {
       for (const k of Object.keys(stats)) delete stats[k];
+      extra.read = { a: 0, c: 0 };
+      extra.setup = { a: 0, c: 0 };
       prefs.best = 0;
       persist();
       $('prog-confirm').hidden = true;
@@ -1795,7 +2574,7 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
       if ($('panel-drill').hidden || e.altKey || e.ctrlKey || e.metaKey) return;
       const tag = (e.target.tagName || '').toLowerCase();
       if (tag === 'select' || tag === 'input') return;
-      if (!drill.answered && /^[1-4]$/.test(e.key)) {
+      if (!drill.answered && /^[1-5]$/.test(e.key)) {
         const b = $('drill-options').children[+e.key - 1];
         if (b) { e.preventDefault(); b.click(); }
       } else if (drill.answered && e.key === 'Enter' && e.target === document.body) {
@@ -1808,7 +2587,7 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
     window.addEventListener('resize', () => {
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
-        for (const id of ['drill-chart', 'spot-chart']) {
+        for (const id of ['drill-chart', 'spot-chart', 'setup-chart']) {
           const svg = $(id);
           if (svg._render && svg.getBoundingClientRect().width) renderChart(svg, ...svg._render);
         }
@@ -1816,6 +2595,7 @@ table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size
     });
 
     buildLibrary();
+    buildSources();
     newDrill();
     updateScores();
     const hash = location.hash.replace('#', '');

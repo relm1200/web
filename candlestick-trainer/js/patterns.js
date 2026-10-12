@@ -77,17 +77,26 @@
 
   const isDojiBody = (s) => s.body <= 0.1 * s.range;
   const isSmallBody = (s) => s.body > 0.1 * s.range && s.body <= 0.35 * s.range;
-  const hammerShape = (s, a) =>
-    isSmallBody(s) && s.lower >= 2 * s.body && s.lower >= 0.55 * s.range && s.upper <= 0.12 * s.range && s.range >= 0.7 * a;
-  const invertedShape = (s, a) =>
-    isSmallBody(s) && s.upper >= 2 * s.body && s.upper >= 0.55 * s.range && s.lower <= 0.12 * s.range && s.range >= 0.7 * a;
+  // Close position within the range: 0 = at the low, 1 = at the high.
+  const closePos = (k) => (k.c - k.l) / Math.max(k.h - k.l, 1e-12);
+  // Monster Guide (p. 9, p. 16): close in the top (bottom) quarter, long wick about 2-3x the body.
+  function hammerShape(k, a) {
+    const s = shape(k);
+    return isSmallBody(s) && s.lower >= 2 * s.body && s.lower >= 0.55 * s.range && s.upper <= 0.12 * s.range &&
+      s.range >= 0.7 * a && closePos(k) >= 0.75;
+  }
+  function invertedShape(k, a) {
+    const s = shape(k);
+    return isSmallBody(s) && s.upper >= 2 * s.body && s.upper >= 0.55 * s.range && s.lower <= 0.12 * s.range &&
+      s.range >= 0.7 * a && closePos(k) <= 0.25;
+  }
   const isLongBody = (s, a) => s.body >= 0.6 * s.range && s.body >= 0.8 * a;
 
   // ---------- builders (generate an idealised, randomised instance) ----------
 
   function buildHammerLike(rng, last, inverted) {
     const b = R(rng, 0.22, 0.38);
-    const longWick = b * R(rng, 2.4, 3.4) + 0.15;
+    const longWick = b * R(rng, 2.6, 3.4) + 0.3;
     const tiny = R(rng, 0, 0.05);
     const o = last + R(rng, -0.05, 0.05);
     const c = o + (rng() < 0.5 ? b : -b);
@@ -97,6 +106,48 @@
   function longCandle(rng, open, dir) {
     const b = R(rng, 1.3, 1.8);
     return mk(open, open + dir * b, R(rng, 0.05, 0.2), R(rng, 0.05, 0.2));
+  }
+
+  // Shared two-candle tests, dir = 1 for bullish, -1 for bearish. j is the second candle.
+  function haramiPair(cs, j, atr, dir) {
+    const p = shape(cs[j - 1]);
+    const s = shape(cs[j]);
+    const outer = dir > 0 ? p.bear : p.bull;
+    const inner = dir > 0 ? s.bull : s.bear;
+    return outer && isLongBody(p, atr) && inner && s.bodyTop <= p.bodyTop && s.bodyBot >= p.bodyBot && s.body <= 0.5 * p.body;
+  }
+  function engulfPair(cs, j, atr, dir) {
+    const p = shape(cs[j - 1]);
+    const s = shape(cs[j]);
+    const first = dir > 0 ? p.bear : p.bull;
+    const second = dir > 0 ? s.bull : s.bear;
+    return first && p.body >= 0.3 * atr && second && s.bodyBot <= p.bodyBot && s.bodyTop >= p.bodyTop && s.body > 1.1 * p.body;
+  }
+  // Rising (dir 1) / Falling (dir -1) Three Methods ending at i.
+  function threeMethods(cs, i, atr, dir) {
+    const a = cs[i - 4];
+    const sa = shape(a);
+    if (!(dir > 0 ? sa.bull : sa.bear) || !isLongBody(sa, atr)) return false;
+    for (let j = i - 3; j <= i - 1; j++) {
+      const s = shape(cs[j]);
+      if (s.range > 0.6 * sa.range || s.body > 0.5 * sa.body || cs[j].h > a.h || cs[j].l < a.l) return false;
+    }
+    const e = shape(cs[i]);
+    if (!(dir > 0 ? e.bull : e.bear) || e.body < 0.6 * e.range || e.body < 0.8 * atr) return false;
+    return dir > 0 ? cs[i].c > a.h : cs[i].c < a.l;
+  }
+  function buildThreeMethods(rng, last, dir) {
+    const a = mk(last, last + dir * R(rng, 1.5, 1.9), R(rng, 0.05, 0.15), R(rng, 0.05, 0.15));
+    const out = [a];
+    let o = a.c - dir * R(rng, 0.1, 0.2);
+    for (let k = 0; k < 3; k++) {
+      const c = o - dir * R(rng, -0.08, 0.3);
+      out.push(mk(o, c, R(rng, 0.04, 0.12), R(rng, 0.04, 0.12)));
+      o = c + R(rng, -0.03, 0.03);
+    }
+    const extreme = dir > 0 ? a.h : a.l;
+    out.push(mk(o, extreme + dir * R(rng, 0.2, 0.45), R(rng, 0.04, 0.12), R(rng, 0.04, 0.12)));
+    return out;
   }
 
   // ---------- pattern catalogue ----------
@@ -193,14 +244,14 @@
       confuse: ['hanging-man', 'inverted-hammer', 'dragonfly-doji'],
       rules: [
         'Appears after a decline',
-        'Small body near the top of the range (either colour)',
+        'Small body; price closes in the top quarter of the range (either colour)',
         'Lower wick at least 2× the body, little or no upper wick',
       ],
       meaning:
         'Sellers pushed price well lower, but buyers drove it back up near the open. Selling pressure is fading at the lows.',
       confirm: 'Wait for a close above the hammer’s high. A common stop goes just below the hammer’s low.',
       test(cs, i, ctx) {
-        return ctx.trend === 'down' && hammerShape(shape(cs[i]), ctx.atr);
+        return ctx.trend === 'down' && hammerShape(cs[i], ctx.atr);
       },
       build: (rng, last) => buildHammerLike(rng, last, false),
     },
@@ -214,14 +265,14 @@
       confuse: ['hammer', 'shooting-star', 'dragonfly-doji'],
       rules: [
         'Appears after a rally (same shape as a hammer, opposite context)',
-        'Small body near the top of the range',
+        'Small body; price closes in the top quarter of the range',
         'Lower wick at least 2× the body, little or no upper wick',
       ],
       meaning:
         'Price sold off hard within the session before recovering. In an uptrend that dip shows sellers testing the market, an early warning the rally is tiring.',
       confirm: 'Needs a bearish close below the hanging man’s body on the next candle. Without it, the trend usually continues.',
       test(cs, i, ctx) {
-        return ctx.trend === 'up' && hammerShape(shape(cs[i]), ctx.atr);
+        return ctx.trend === 'up' && hammerShape(cs[i], ctx.atr);
       },
       build: (rng, last) => buildHammerLike(rng, last, false),
     },
@@ -235,14 +286,14 @@
       confuse: ['shooting-star', 'hammer', 'gravestone-doji'],
       rules: [
         'Appears after a decline',
-        'Small body near the bottom of the range',
+        'Small body; price closes in the bottom quarter of the range',
         'Upper wick at least 2× the body, little or no lower wick',
       ],
       meaning:
         'Buyers attempted a push higher at the lows. They didn’t hold it, but it is the first sign of demand after a sell-off.',
       confirm: 'Weaker than a hammer. Wait for the next candle to close above the inverted hammer’s body.',
       test(cs, i, ctx) {
-        return ctx.trend === 'down' && invertedShape(shape(cs[i]), ctx.atr);
+        return ctx.trend === 'down' && invertedShape(cs[i], ctx.atr);
       },
       build: (rng, last) => buildHammerLike(rng, last, true),
     },
@@ -256,14 +307,14 @@
       confuse: ['inverted-hammer', 'gravestone-doji', 'hanging-man'],
       rules: [
         'Appears after a rally (same shape as an inverted hammer, opposite context)',
-        'Small body near the bottom of the range',
+        'Small body; price closes in the bottom quarter of the range',
         'Upper wick at least 2× the body, little or no lower wick',
       ],
       meaning:
         'Buyers spiked price higher, then sellers slammed it back down to the open. Strong rejection of higher prices.',
       confirm: 'Look for the next candle to close below the shooting star’s body. Stops often go above the wick high.',
       test(cs, i, ctx) {
-        return ctx.trend === 'up' && invertedShape(shape(cs[i]), ctx.atr);
+        return ctx.trend === 'up' && invertedShape(cs[i], ctx.atr);
       },
       build: (rng, last) => buildHammerLike(rng, last, true),
     },
@@ -346,7 +397,7 @@
       candles: 2,
       signal: 'bullish',
       trend: 'down',
-      confuse: ['piercing-line', 'bullish-harami', 'tweezer-bottom'],
+      confuse: ['piercing-line', 'three-outside-up', 'tweezer-bottom'],
       rules: [
         'Appears after a decline',
         'Candle 1 is bearish',
@@ -376,7 +427,7 @@
       candles: 2,
       signal: 'bearish',
       trend: 'up',
-      confuse: ['dark-cloud-cover', 'bearish-harami', 'tweezer-top'],
+      confuse: ['dark-cloud-cover', 'three-outside-down', 'tweezer-top'],
       rules: [
         'Appears after a rally',
         'Candle 1 is bullish',
@@ -406,7 +457,7 @@
       candles: 2,
       signal: 'bullish',
       trend: 'down',
-      confuse: ['bullish-engulfing', 'bearish-harami', 'morning-star'],
+      confuse: ['bullish-engulfing', 'three-inside-up', 'morning-star'],
       rules: [
         'Appears after a decline',
         'Candle 1 is a long bearish candle',
@@ -437,7 +488,7 @@
       candles: 2,
       signal: 'bearish',
       trend: 'up',
-      confuse: ['bearish-engulfing', 'bullish-harami', 'evening-star'],
+      confuse: ['bearish-engulfing', 'three-inside-down', 'evening-star'],
       rules: [
         'Appears after a rally',
         'Candle 1 is a long bullish candle',
@@ -535,8 +586,8 @@
       confuse: ['tweezer-top', 'bullish-engulfing', 'piercing-line'],
       rules: [
         'Appears after a decline',
-        'Candle 1 is bearish, candle 2 is bullish',
-        'Both candles make the same low (within 5% of an average range)',
+        'Candle 1 shows rejection of lower prices (lower wick ≥ 25% of its range)',
+        'Candle 2 re-tests the same low (within 5% of an average range) and closes bullish',
       ],
       meaning: 'Price tested the same low twice and was rejected both times. That level is acting as support.',
       confirm: 'A close above candle 1’s open confirms it. A stop just under the shared low is common.',
@@ -544,16 +595,16 @@
         const p = shape(cs[i - 1]);
         const s = shape(cs[i]);
         return (
-          ctx.trend === 'down' && p.bear && s.bull && p.body >= 0.3 * ctx.atr && s.body >= 0.2 * ctx.atr &&
+          ctx.trend === 'down' && p.lower >= 0.25 * p.range && p.range >= 0.6 * ctx.atr && s.bull && s.body >= 0.2 * ctx.atr &&
           Math.abs(cs[i - 1].l - cs[i].l) <= 0.05 * ctx.atr
         );
       },
       build(rng, last) {
-        const p = mk(last, last - R(rng, 0.7, 1.0), R(rng, 0.03, 0.12), R(rng, 0.3, 0.5));
+        const p = mk(last, last - R(rng, 1.0, 1.3), R(rng, 0.03, 0.1), R(rng, 0.42, 0.55));
         const pb = p.o - p.c;
         const o = p.c - R(rng, 0.01, 0.05);
-        const c = o + pb * R(rng, 0.35, 0.45);
-        const s = { o, c, h: c + R(rng, 0.03, 0.15), l: p.l + R(rng, -0.02, 0.02) };
+        const c = o + pb * R(rng, 0.38, 0.47);
+        const s = { o, c, h: c + R(rng, 0.05, 0.15), l: p.l + R(rng, -0.02, 0.02) };
         return [p, s];
       },
     },
@@ -567,8 +618,8 @@
       confuse: ['tweezer-bottom', 'bearish-engulfing', 'dark-cloud-cover'],
       rules: [
         'Appears after a rally',
-        'Candle 1 is bullish, candle 2 is bearish',
-        'Both candles make the same high (within 5% of an average range)',
+        'Candle 1 shows rejection of higher prices (upper wick ≥ 25% of its range)',
+        'Candle 2 re-tests the same high (within 5% of an average range) and closes bearish',
       ],
       meaning: 'Price tested the same high twice and was rejected both times. That level is acting as resistance.',
       confirm: 'A close below candle 1’s open confirms it. A stop just above the shared high is common.',
@@ -576,16 +627,16 @@
         const p = shape(cs[i - 1]);
         const s = shape(cs[i]);
         return (
-          ctx.trend === 'up' && p.bull && s.bear && p.body >= 0.3 * ctx.atr && s.body >= 0.2 * ctx.atr &&
+          ctx.trend === 'up' && p.upper >= 0.25 * p.range && p.range >= 0.6 * ctx.atr && s.bear && s.body >= 0.2 * ctx.atr &&
           Math.abs(cs[i - 1].h - cs[i].h) <= 0.05 * ctx.atr
         );
       },
       build(rng, last) {
-        const p = mk(last, last + R(rng, 0.7, 1.0), R(rng, 0.3, 0.5), R(rng, 0.03, 0.12));
+        const p = mk(last, last + R(rng, 1.0, 1.3), R(rng, 0.42, 0.55), R(rng, 0.03, 0.1));
         const pb = p.c - p.o;
         const o = p.c + R(rng, 0.01, 0.05);
-        const c = o - pb * R(rng, 0.35, 0.45);
-        const s = { o, c, h: p.h + R(rng, -0.02, 0.02), l: c - R(rng, 0.03, 0.15) };
+        const c = o - pb * R(rng, 0.38, 0.47);
+        const s = { o, c, h: p.h + R(rng, -0.02, 0.02), l: c - R(rng, 0.05, 0.15) };
         return [p, s];
       },
     },
@@ -600,7 +651,7 @@
       rules: [
         'Appears after a decline',
         'Candle 1 is a long bearish candle',
-        'Candle 2 has a small body at or below candle 1’s close',
+        'Candle 2 is small (body ≤ 30% and range ≤ 60% of candle 1’s) and sits at or below candle 1’s close',
         'Candle 3 is bullish and closes above the midpoint of candle 1’s body',
       ],
       meaning: 'Selling, then hesitation, then a strong buying session. The three-step sequence shows control passing from sellers to buyers.',
@@ -611,7 +662,7 @@
         const s = shape(cs[i]);
         const a = cs[i - 2];
         return (
-          ctx.trend === 'down' && q.bear && isLongBody(q, ctx.atr) && p.body <= 0.3 * q.body &&
+          ctx.trend === 'down' && q.bear && isLongBody(q, ctx.atr) && p.body <= 0.3 * q.body && p.range <= 0.6 * q.range &&
           p.bodyTop <= a.c + 0.1 * q.body && s.bull && cs[i].c >= a.c + 0.5 * q.body
         );
       },
@@ -620,7 +671,7 @@
         const qb = q.o - q.c;
         const po = q.c - R(rng, 0.05, 0.15);
         const pc = po + R(rng, -0.12, 0.12);
-        const p = mk(po, pc, R(rng, 0.1, 0.3), R(rng, 0.1, 0.3));
+        const p = mk(po, pc, R(rng, 0.08, 0.25), R(rng, 0.08, 0.25));
         const so = pc + R(rng, -0.03, 0.03);
         const s = mk(so, q.c + qb * R(rng, 0.6, 0.9), R(rng, 0.15, 0.28), R(rng, 0.12, 0.25));
         return [q, p, s];
@@ -637,7 +688,7 @@
       rules: [
         'Appears after a rally',
         'Candle 1 is a long bullish candle',
-        'Candle 2 has a small body at or above candle 1’s close',
+        'Candle 2 is small (body ≤ 30% and range ≤ 60% of candle 1’s) and sits at or above candle 1’s close',
         'Candle 3 is bearish and closes below the midpoint of candle 1’s body',
       ],
       meaning: 'Buying, then hesitation, then a strong selling session. Control passes from buyers to sellers at the top.',
@@ -648,7 +699,7 @@
         const s = shape(cs[i]);
         const a = cs[i - 2];
         return (
-          ctx.trend === 'up' && q.bull && isLongBody(q, ctx.atr) && p.body <= 0.3 * q.body &&
+          ctx.trend === 'up' && q.bull && isLongBody(q, ctx.atr) && p.body <= 0.3 * q.body && p.range <= 0.6 * q.range &&
           p.bodyBot >= a.c - 0.1 * q.body && s.bear && cs[i].c <= a.c - 0.5 * q.body
         );
       },
@@ -657,7 +708,7 @@
         const qb = q.c - q.o;
         const po = q.c + R(rng, 0.05, 0.15);
         const pc = po + R(rng, -0.12, 0.12);
-        const p = mk(po, pc, R(rng, 0.1, 0.3), R(rng, 0.1, 0.3));
+        const p = mk(po, pc, R(rng, 0.08, 0.25), R(rng, 0.08, 0.25));
         const so = pc + R(rng, -0.03, 0.03);
         const s = mk(so, q.c - qb * R(rng, 0.6, 0.9), R(rng, 0.12, 0.25), R(rng, 0.15, 0.28));
         return [q, p, s];
@@ -743,6 +794,164 @@
         return out;
       },
     },
+    {
+      id: 'three-inside-up',
+      name: 'Three Inside Up',
+      group: 'triple',
+      candles: 3,
+      signal: 'bullish',
+      trend: 'down',
+      confuse: ['bullish-harami', 'three-outside-up', 'morning-star'],
+      rules: [
+        'Appears after a decline',
+        'Candle 1 is a long bearish candle',
+        'Candle 2 is a small bullish body inside candle 1’s body (a bullish harami)',
+        'Candle 3 is bullish and closes above candle 2’s close',
+      ],
+      meaning: 'A bullish harami followed by a second up-close. The pause in selling has already had one session of follow-through from buyers.',
+      confirm: 'It signals later than the harami alone, in exchange for confirmation. A stop below candle 1’s low is common.',
+      test(cs, i, ctx) {
+        return ctx.trend === 'down' && haramiPair(cs, i - 1, ctx.atr, 1) && cs[i].c > cs[i].o && cs[i].c > cs[i - 1].c;
+      },
+      build(rng, last) {
+        const q = longCandle(rng, last, -1);
+        const qb = q.o - q.c;
+        const po = q.c + qb * R(rng, 0.12, 0.25);
+        const p = mk(po, po + qb * R(rng, 0.18, 0.3), R(rng, 0.05, 0.12), R(rng, 0.05, 0.12));
+        const so = p.c + R(rng, -0.03, 0.03);
+        const s = mk(so, so + R(rng, 0.45, 0.8), R(rng, 0.1, 0.22), R(rng, 0.08, 0.2));
+        return [q, p, s];
+      },
+    },
+    {
+      id: 'three-inside-down',
+      name: 'Three Inside Down',
+      group: 'triple',
+      candles: 3,
+      signal: 'bearish',
+      trend: 'up',
+      confuse: ['bearish-harami', 'three-outside-down', 'evening-star'],
+      rules: [
+        'Appears after a rally',
+        'Candle 1 is a long bullish candle',
+        'Candle 2 is a small bearish body inside candle 1’s body (a bearish harami)',
+        'Candle 3 is bearish and closes below candle 2’s close',
+      ],
+      meaning: 'A bearish harami followed by a second down-close. The stall in buying has already had one session of follow-through from sellers.',
+      confirm: 'It signals later than the harami alone, in exchange for confirmation. A stop above candle 1’s high is common.',
+      test(cs, i, ctx) {
+        return ctx.trend === 'up' && haramiPair(cs, i - 1, ctx.atr, -1) && cs[i].c < cs[i].o && cs[i].c < cs[i - 1].c;
+      },
+      build(rng, last) {
+        const q = longCandle(rng, last, 1);
+        const qb = q.c - q.o;
+        const po = q.c - qb * R(rng, 0.12, 0.25);
+        const p = mk(po, po - qb * R(rng, 0.18, 0.3), R(rng, 0.05, 0.12), R(rng, 0.05, 0.12));
+        const so = p.c + R(rng, -0.03, 0.03);
+        const s = mk(so, so - R(rng, 0.45, 0.8), R(rng, 0.08, 0.2), R(rng, 0.1, 0.22));
+        return [q, p, s];
+      },
+    },
+    {
+      id: 'three-outside-up',
+      name: 'Three Outside Up',
+      group: 'triple',
+      candles: 3,
+      signal: 'bullish',
+      trend: 'down',
+      confuse: ['bullish-engulfing', 'three-inside-up', 'three-white-soldiers'],
+      rules: [
+        'Appears after a decline',
+        'Candle 1 is bearish',
+        'Candle 2 is bullish and its body engulfs candle 1’s body (a bullish engulfing)',
+        'Candle 3 is bullish and closes above candle 2’s close',
+      ],
+      meaning: 'An engulfing reversal followed by another higher close, so the shift to buyers has been confirmed once already.',
+      confirm: 'Entries after candle 3 are further from the low, so the stop below the pattern is wider. Size the position for that.',
+      test(cs, i, ctx) {
+        return ctx.trend === 'down' && engulfPair(cs, i - 1, ctx.atr, 1) && cs[i].c > cs[i].o && cs[i].c > cs[i - 1].c;
+      },
+      build(rng, last) {
+        const q = mk(last, last - R(rng, 0.45, 0.75), R(rng, 0.05, 0.2), R(rng, 0.03, 0.1));
+        const po = q.c - R(rng, 0, 0.05);
+        const p = mk(po, q.o + R(rng, 0.2, 0.45), R(rng, 0.12, 0.25), R(rng, 0.25, 0.4));
+        const so = p.c + R(rng, -0.03, 0.03);
+        const s = mk(so, so + R(rng, 0.4, 0.7), R(rng, 0.1, 0.22), R(rng, 0.1, 0.2));
+        return [q, p, s];
+      },
+    },
+    {
+      id: 'three-outside-down',
+      name: 'Three Outside Down',
+      group: 'triple',
+      candles: 3,
+      signal: 'bearish',
+      trend: 'up',
+      confuse: ['bearish-engulfing', 'three-inside-down', 'three-black-crows'],
+      rules: [
+        'Appears after a rally',
+        'Candle 1 is bullish',
+        'Candle 2 is bearish and its body engulfs candle 1’s body (a bearish engulfing)',
+        'Candle 3 is bearish and closes below candle 2’s close',
+      ],
+      meaning: 'An engulfing reversal followed by another lower close, so the shift to sellers has been confirmed once already.',
+      confirm: 'Entries after candle 3 are further from the high, so the stop above the pattern is wider. Size the position for that.',
+      test(cs, i, ctx) {
+        return ctx.trend === 'up' && engulfPair(cs, i - 1, ctx.atr, -1) && cs[i].c < cs[i].o && cs[i].c < cs[i - 1].c;
+      },
+      build(rng, last) {
+        const q = mk(last, last + R(rng, 0.45, 0.75), R(rng, 0.03, 0.1), R(rng, 0.05, 0.2));
+        const po = q.c + R(rng, 0, 0.05);
+        const p = mk(po, q.o - R(rng, 0.2, 0.45), R(rng, 0.25, 0.4), R(rng, 0.12, 0.25));
+        const so = p.c + R(rng, -0.03, 0.03);
+        const s = mk(so, so - R(rng, 0.4, 0.7), R(rng, 0.1, 0.2), R(rng, 0.1, 0.22));
+        return [q, p, s];
+      },
+    },
+    {
+      id: 'rising-three-methods',
+      name: 'Rising Three Methods',
+      group: 'multi',
+      candles: 5,
+      signal: 'bullish',
+      trend: 'up',
+      confuse: ['falling-three-methods', 'bullish-harami', 'three-white-soldiers'],
+      rules: [
+        'Appears during an uptrend',
+        'Candle 1 is a large bullish candle',
+        'Candles 2–4 have smaller ranges and bodies and stay inside candle 1’s range',
+        'Candle 5 is a large bullish candle that closes above candle 1’s high',
+      ],
+      meaning:
+        'Buyers paused to take profit, but the pullback was shallow and stayed inside the first candle. The fifth candle resumes the trend at a new high. It is the candlestick version of a bull flag.',
+      confirm: 'The Monster Guide uses it after a breakout above resistance: wait for the pattern, then buy the break of its high.',
+      test(cs, i, ctx) {
+        return ctx.trend === 'up' && threeMethods(cs, i, ctx.atr, 1);
+      },
+      build: (rng, last) => buildThreeMethods(rng, last, 1),
+    },
+    {
+      id: 'falling-three-methods',
+      name: 'Falling Three Methods',
+      group: 'multi',
+      candles: 5,
+      signal: 'bearish',
+      trend: 'down',
+      confuse: ['rising-three-methods', 'bearish-harami', 'three-black-crows'],
+      rules: [
+        'Appears during a downtrend',
+        'Candle 1 is a large bearish candle',
+        'Candles 2–4 have smaller ranges and bodies and stay inside candle 1’s range',
+        'Candle 5 is a large bearish candle that closes below candle 1’s low',
+      ],
+      meaning:
+        'Sellers paused to take profit, but the bounce was shallow and stayed inside the first candle. The fifth candle resumes the decline at a new low. It is the candlestick version of a bear flag.',
+      confirm: 'The Monster Guide uses it after a breakdown below support: wait for the pattern, then sell the break of its low.',
+      test(cs, i, ctx) {
+        return ctx.trend === 'down' && threeMethods(cs, i, ctx.atr, -1);
+      },
+      build: (rng, last) => buildThreeMethods(rng, last, -1),
+    },
   ];
 
   const BY_ID = Object.fromEntries(PATTERNS.map((p) => [p.id, p]));
@@ -801,7 +1010,7 @@
 
   const DRIFT = { up: 0.45, down: -0.45, flat: 0 };
 
-  function toMarket(rng, raw) {
+  function toMarket(rng, raw, extra = []) {
     const pair = pick(rng, PAIRS);
     const tf = pick(rng, TIMEFRAMES);
     const scale = tf.atrPips * pair.pip;
@@ -809,7 +1018,7 @@
     const f = 10 ** pair.dp;
     const round = (x) => Math.round((base + x * scale) * f) / f;
     const candles = raw.map((k) => ({ o: round(k.o), h: round(k.h), l: round(k.l), c: round(k.c) }));
-    return { pair, tf, candles };
+    return { pair, tf, candles, extra: extra.map(round) };
   }
 
   function trendFor(rng, def) {
@@ -880,6 +1089,229 @@
     return { trend: ctx.trend, move: +ctx.move.toFixed(2), candles };
   }
 
+  // ---------- sources ----------
+  // Every rule above is traceable to at least one of these documents (or to the
+  // standard definition where a document only lists the name). Disagreements
+  // between them are recorded in `notes` rather than silently resolved.
+
+  const SOURCES = {
+    MG: {
+      short: 'Monster Guide',
+      title: 'The Monster Guide to Candlestick Patterns',
+      author: 'Rayner Teo (TradingwithRayner)',
+      loc: 'page',
+    },
+    TP: {
+      short: '58 Patterns',
+      title: '58 Candlestick Patterns PDF Manual',
+      author: 'tradingpdf.net (printed 25 Dec 2023)',
+      loc: 'entry',
+    },
+  };
+
+  const MG_HARAMI =
+    'The Monster Guide disagrees with the classic reading: Rayner Teo argues the harami works better as a continuation pattern (a large candle in the trend direction, then a small inside candle) and treats it like an inside bar. This trainer tests the classic reversal form, which most references use.';
+  const GAP_NOTE = (side) =>
+    `The 58-pattern manual gives the classic stock-market rule: candle 2 opens ${side}. Spot FX trades around the clock, so that gap almost never forms. This trainer follows the Monster Guide’s version, which has no gap requirement.`;
+
+  const META = {
+    doji: { role: 'indecision', refs: [['MG', 23], ['TP', 9]], notes: ['The Monster Guide places the open and close around the middle of the range. This trainer checks that with a wick of at least 25% on each side.'] },
+    'dragonfly-doji': { role: 'reversal', refs: [['MG', 23], ['TP', 7]] },
+    'gravestone-doji': { role: 'reversal', refs: [['MG', 24], ['TP', 6]] },
+    hammer: { role: 'reversal', refs: [['MG', 9], ['TP', 14]], notes: ['The “top quarter” close and the 2–3× wick come from the Monster Guide.'] },
+    'hanging-man': { role: 'reversal', refs: [['TP', 15]], notes: ['Not in the Monster Guide. The 58-pattern manual defines it as the hammer shape appearing at the end of an uptrend.'] },
+    'inverted-hammer': { role: 'reversal', refs: [['TP', 5]] },
+    'shooting-star': { role: 'reversal', refs: [['MG', 16], ['TP', 4]], notes: ['The “bottom quarter” close and the 2–3× wick come from the Monster Guide.'] },
+    'spinning-top': { role: 'indecision', refs: [['MG', 22], ['TP', 10]] },
+    'bullish-marubozu': { role: 'continuation', refs: [['TP', 2]], notes: ['The 58-pattern manual treats a marubozu as a continuation signal in the direction of the candle.'] },
+    'bearish-marubozu': { role: 'continuation', refs: [['TP', 1]], notes: ['The 58-pattern manual treats a marubozu as a continuation signal in the direction of the candle.'] },
+    'bullish-engulfing': { role: 'reversal', refs: [['MG', 10], ['TP', 25]], notes: ['Both sources compare bodies only and ignore the wicks.'] },
+    'bearish-engulfing': { role: 'reversal', refs: [['MG', 17], ['TP', 24]], notes: ['Both sources compare bodies only and ignore the wicks.'] },
+    'bullish-harami': { role: 'reversal', refs: [['MG', 27]], notes: [MG_HARAMI] },
+    'bearish-harami': { role: 'reversal', refs: [['MG', 28]], notes: [MG_HARAMI] },
+    'piercing-line': { role: 'reversal', refs: [['MG', 11], ['TP', 26]], notes: [GAP_NOTE('below candle 1’s low')] },
+    'dark-cloud-cover': { role: 'reversal', refs: [['MG', 18], ['TP', 23]], notes: [GAP_NOTE('above candle 1’s high')] },
+    'tweezer-bottom': { role: 'reversal', refs: [['MG', 12]], notes: ['Rules follow the Monster Guide. This is not the 58-pattern manual’s Matching Low, which compares the closes of two bearish candles.'] },
+    'tweezer-top': { role: 'reversal', refs: [['MG', 18]] },
+    'morning-star': { role: 'reversal', refs: [['MG', 13], ['TP', 33]], notes: ['The manual’s Morning Doji Star needs a doji that gaps below candle 1. The Monster Guide only asks for a small-range middle candle, which suits gap-free forex charts, so that is the rule used here.'] },
+    'evening-star': { role: 'reversal', refs: [['MG', 19], ['TP', 34]], notes: ['The manual’s Evening Doji Star needs a doji that gaps above candle 1. The Monster Guide only asks for a small-range middle candle, so that is the rule used here.'] },
+    'three-white-soldiers': { role: 'reversal', refs: [], notes: ['Named in the 58-pattern manual’s list, but its entry falls beyond the pages in the PDF. Rules follow the standard definition, mirroring the manual’s Three Black Crows (#35).'] },
+    'three-black-crows': { role: 'reversal', refs: [['TP', 35]] },
+    'three-inside-up': { role: 'reversal', refs: [['TP', 38]], notes: ['Many references require candle 3 to close above candle 1’s open. The manual only requires a close above candle 2’s close, and that is the rule tested here.'] },
+    'three-inside-down': { role: 'reversal', refs: [['TP', 37]], notes: ['Many references require candle 3 to close below candle 1’s open. The manual only requires a close below candle 2’s close, and that is the rule tested here.'] },
+    'three-outside-up': { role: 'reversal', refs: [['TP', 40]] },
+    'three-outside-down': { role: 'reversal', refs: [['TP', 41]] },
+    'rising-three-methods': { role: 'continuation', refs: [['MG', 25]], notes: ['The Monster Guide only says candles 2–4 are smaller. Keeping them inside candle 1’s range is the classic rule, added so the pattern is unambiguous.'] },
+    'falling-three-methods': { role: 'continuation', refs: [['MG', 26]], notes: ['The Monster Guide only says candles 2–4 are smaller. Keeping them inside candle 1’s range is the classic rule, added so the pattern is unambiguous.'] },
+  };
+  for (const p of PATTERNS) {
+    const m = META[p.id] || {};
+    p.role = m.role || 'reversal';
+    p.refs = (m.refs || []).map(([src, n]) => ({ src, n }));
+    p.notes = m.notes || [];
+  }
+
+  // Known problems in the source documents, shown in the Library.
+  const SOURCE_ISSUES = [
+    'The 58-pattern manual says bullish candles are “often colored in (or black)” and bearish ones “empty (white)”. That is backwards: in the standard convention a hollow or white body closes up and a filled or black body closes down. This trainer uses green for up and red for down.',
+    'The 58-pattern manual promises 58 patterns but its pages stop after entry #43, so later entries (Three White Soldiers, Rising and Falling Three Methods and others) are only listed by name.',
+    'The Monster Guide’s Engulfing description says the second candle closes beyond the previous candle’s high (or low), while its recognition rule compares bodies only. This trainer uses the body rule, which both documents share.',
+    'Several patterns in the 58-pattern manual depend on price gaps (Abandoned Baby, Kicking, Doji Stars, Island Reversal). Gaps are rare on 24-hour forex charts, so those patterns are left out.',
+  ];
+
+  // ---------- setup checklist (Monster Guide pp. 14 and 20) ----------
+  // 1. trade with the bigger trend, 2. at a support/resistance level after a
+  // pullback, 3. the reversal candle is larger than the candles before it.
+
+  const SETUP_PATTERNS = ['hammer', 'bullish-engulfing', 'piercing-line', 'tweezer-bottom', 'morning-star',
+    'shooting-star', 'bearish-engulfing', 'dark-cloud-cover', 'tweezer-top', 'evening-star'];
+  const MIRROR_OF = { 'shooting-star': 'hammer', 'bearish-engulfing': 'bullish-engulfing', 'dark-cloud-cover': 'piercing-line', 'tweezer-top': 'tweezer-bottom', 'evening-star': 'morning-star' };
+  const SETUP = { maPeriod: 20, maLookback: 10, maSlope: 1.0, levelTol: 0.6, maxPierce: 1.5, sizeRatio: 1.3, sizeLookback: 10 };
+
+  const mirrorCandle = (k) => ({ o: -k.o, h: -k.l, l: -k.h, c: -k.c });
+
+  function sma(cs, end, n = SETUP.maPeriod) {
+    if (end - n + 1 < 0) return null;
+    let t = 0;
+    for (let j = end - n + 1; j <= end; j++) t += cs[j].c;
+    return t / n;
+  }
+
+  // Direction of the 20-period moving average over the 10 candles before `start`.
+  function bigTrend(cs, start) {
+    const atr = avgRange(cs, start);
+    const now = sma(cs, start - 1);
+    const then = sma(cs, start - 1 - SETUP.maLookback);
+    if (now === null || then === null) return { dir: 'flat', slope: 0 };
+    const slope = (now - then) / atr;
+    return { dir: slope >= SETUP.maSlope ? 'up' : slope <= -SETUP.maSlope ? 'down' : 'flat', slope };
+  }
+
+  function evaluateSetup(cs, i, id, level) {
+    const def = BY_ID[id];
+    const start = i - def.candles + 1;
+    const atr = avgRange(cs, start);
+    const bull = def.signal === 'bullish';
+    const t = bigTrend(cs, start);
+    let ext = bull ? Infinity : -Infinity;
+    for (let j = start; j <= i; j++) ext = bull ? Math.min(ext, cs[j].l) : Math.max(ext, cs[j].h);
+    // distance from the level, in average ranges, measured away from the level (positive = has not reached it)
+    const dist = (bull ? ext - level : level - ext) / atr;
+    const closedRightSide = bull ? cs[i].c >= level : cs[i].c <= level;
+    const before = avgRange(cs, start, SETUP.sizeLookback);
+    const ratio = (cs[i].h - cs[i].l) / before;
+    const res = {
+      trend: { ok: t.dir === (bull ? 'up' : 'down'), dir: t.dir, slope: t.slope },
+      level: { ok: dist <= SETUP.levelTol && dist >= -SETUP.maxPierce && closedRightSide, dist, closedRightSide },
+      size: { ok: ratio >= SETUP.sizeRatio, ratio },
+      extreme: ext,
+      atr,
+    };
+    res.pass = res.trend.ok && res.level.ok && res.size.ok;
+    return res;
+  }
+
+  // Bullish construction in "u" units; bearish setups are mirrored.
+  function setupRaw(rng, baseId, want) {
+    const out = [];
+    const push = (arr) => { out.push(...arr); return arr[arr.length - 1].c; };
+    let last, level;
+    if (want.trend) {
+      // uptrend: old resistance (leg 1 high) becomes support on the pullback
+      last = push(series(rng, 0, 8, 0));
+      const leg1 = series(rng, last, 8, 0.5);
+      level = Math.max(...leg1.map((k) => k.h));
+      last = push(leg1);
+      last = push(series(rng, last, 3, -0.35));
+      last = push(series(rng, last, 11, 0.6));
+    } else {
+      // downtrend: price falls back to an old base low
+      last = push(series(rng, 0, 8, 0));
+      level = Math.min(...out.map((k) => k.l));
+      last = push(series(rng, last, 12, 0.6));
+    }
+    // Build the pattern first (relative to 0) so the pullback can end where its extreme lands.
+    const scale = want.size ? R(rng, 1.5, 1.9) : R(rng, 0.75, 0.95);
+    const pat = BY_ID[baseId].build(rng, 0).map((k) => ({ o: k.o * scale, h: k.h * scale, l: k.l * scale, c: k.c * scale }));
+    const extOff = Math.min(...pat.map((k) => k.l));
+    const target = level - extOff + (want.level ? R(rng, -0.5, 0.3) : R(rng, 1.2, 2.2));
+    let n = 0;
+    while ((last > target || n < 6) && n < 18) { last = push(series(rng, last, 1, -0.5)); n++; }
+    if (last > target + 0.4) return null;
+    out.push(...pat.map((k) => ({ o: k.o + last, h: k.h + last, l: k.l + last, c: k.c + last })));
+    return { candles: out, level };
+  }
+
+  // want = { trend, level, size } booleans: which checks the chart should pass.
+  function generateSetup(id, rng, want) {
+    const def = BY_ID[id];
+    if (!SETUP_PATTERNS.includes(id)) throw new Error('Not a setup pattern: ' + id);
+    const baseId = MIRROR_OF[id] || id;
+    for (let attempt = 0; attempt < 1500; attempt++) {
+      const raw = setupRaw(rng, baseId, want);
+      if (!raw) continue;
+      let { candles, level } = raw;
+      if (MIRROR_OF[id]) { candles = candles.map(mirrorCandle); level = -level; }
+      const m = toMarket(rng, candles, [level]);
+      const i = m.candles.length - 1;
+      if (!matches(m.candles, i, id)) continue;
+      const ev = evaluateSetup(m.candles, i, id, m.extra[0]);
+      if (ev.trend.ok !== want.trend || ev.level.ok !== want.level || ev.size.ok !== want.size) continue;
+      return { pair: m.pair, tf: m.tf, candles: m.candles, id, index: i, start: i - def.candles + 1, level: m.extra[0], evaluation: ev, attempts: attempt + 1 };
+    }
+    throw new Error('Could not generate setup: ' + id + ' ' + JSON.stringify(want));
+  }
+
+  // ---------- reading a single candle (Monster Guide pp. 32-35) ----------
+  // 1. body colour = who is in control, 2. wick length = rejection,
+  // 3. body-to-wick ratio = the whole story.
+
+  const READ_KINDS = [
+    { id: 'buyers', label: 'Buyers in control', bias: 'bullish', why: 'A strong close near the high with a short upper wick: buyers held the gains.' },
+    { id: 'sellers', label: 'Sellers in control', bias: 'bearish', why: 'A strong close near the low with a short lower wick: sellers held the losses.' },
+    { id: 'reject-high', label: 'Higher prices rejected', bias: 'bearish', why: 'The long upper wick shows sellers pushed price back down. That outweighs the colour of a small body.' },
+    { id: 'reject-low', label: 'Lower prices rejected', bias: 'bullish', why: 'The long lower wick shows buyers pushed price back up. That outweighs the colour of a small body.' },
+    { id: 'indecision', label: 'Indecision', bias: 'neutral', why: 'A tiny body with similar wicks on both sides: neither side won the session.' },
+  ];
+
+  function classifyCandle(k) {
+    const s = shape(k);
+    const out = [];
+    if (s.bull && s.body >= 0.6 * s.range && s.upper <= 0.15 * s.range) out.push('buyers');
+    if (s.bear && s.body >= 0.6 * s.range && s.lower <= 0.15 * s.range) out.push('sellers');
+    if (s.upper >= 0.55 * s.range) out.push('reject-high');
+    if (s.lower >= 0.55 * s.range) out.push('reject-low');
+    if (s.body <= 0.2 * s.range && s.upper >= 0.3 * s.range && s.lower >= 0.3 * s.range) out.push('indecision');
+    return out;
+  }
+
+  function buildRead(rng, last, kind) {
+    const o = last + R(rng, -0.03, 0.03);
+    const dir = rng() < 0.6 ? 1 : -1; // small bodies lean against the wick more often: the trap the guide warns about
+    switch (kind) {
+      case 'buyers': return mk(o, o + R(rng, 0.9, 1.4), R(rng, 0, 0.12), R(rng, 0, 0.35));
+      case 'sellers': return mk(o, o - R(rng, 0.9, 1.4), R(rng, 0, 0.35), R(rng, 0, 0.12));
+      case 'reject-high': return mk(o, o + dir * R(rng, 0.1, 0.35), R(rng, 0.9, 1.4), R(rng, 0, 0.15));
+      case 'reject-low': return mk(o, o - dir * R(rng, 0.1, 0.35), R(rng, 0, 0.15), R(rng, 0.9, 1.4));
+      default: {
+        const w = R(rng, 0.45, 0.7);
+        return mk(o, o + R(rng, -0.12, 0.12), w * R(rng, 0.85, 1.15), w * R(rng, 0.85, 1.15));
+      }
+    }
+  }
+
+  function generateRead(rng, kind) {
+    for (let attempt = 0; attempt < 300; attempt++) {
+      const ctx = series(rng, 0, 14, 0);
+      const k = buildRead(rng, ctx[ctx.length - 1].c, kind);
+      const m = toMarket(rng, ctx.concat([k]));
+      const i = m.candles.length - 1;
+      const got = classifyCandle(m.candles[i]);
+      if (got.length === 1 && got[0] === kind) return { ...m, kind, index: i, start: i };
+    }
+    throw new Error('Could not generate candle: ' + kind);
+  }
+
   return {
     PATTERNS,
     BY_ID,
@@ -894,6 +1326,17 @@
     generateDrill,
     generateSpot,
     explain,
+    SOURCES,
+    SOURCE_ISSUES,
+    SETUP,
+    SETUP_PATTERNS,
+    sma,
+    bigTrend,
+    evaluateSetup,
+    generateSetup,
+    READ_KINDS,
+    classifyCandle,
+    generateRead,
     _internal: { series, mk, TREND_LOOKBACK, TREND_THRESHOLD },
   };
 });

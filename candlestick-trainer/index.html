@@ -23,6 +23,7 @@
     <nav class="tabs" role="tablist" aria-label="Sections">
       <button role="tab" id="tab-drill" aria-controls="panel-drill" aria-selected="true">Drill</button>
       <button role="tab" id="tab-spot" aria-controls="panel-spot" aria-selected="false">Spot</button>
+      <button role="tab" id="tab-setups" aria-controls="panel-setups" aria-selected="false">Setups</button>
       <button role="tab" id="tab-library" aria-controls="panel-library" aria-selected="false">Library</button>
       <button role="tab" id="tab-progress" aria-controls="panel-progress" aria-selected="false">Progress</button>
     </nav>
@@ -36,13 +37,15 @@
         <select id="drill-mode">
           <option value="name">Name the pattern</option>
           <option value="bias">Call the bias</option>
+          <option value="read">Read the candle</option>
         </select>
       </div>
-      <fieldset class="field groups">
+      <fieldset class="field groups" id="drill-groups">
         <legend>Patterns</legend>
         <label><input type="checkbox" id="grp-single" checked> 1-candle</label>
         <label><input type="checkbox" id="grp-double" checked> 2-candle</label>
         <label><input type="checkbox" id="grp-triple" checked> 3-candle</label>
+        <label><input type="checkbox" id="grp-multi" checked> 5-candle</label>
       </fieldset>
       <fieldset class="field groups">
         <legend>Assist</legend>
@@ -88,6 +91,7 @@
         <label><input type="checkbox" id="spot-single" checked> 1-candle</label>
         <label><input type="checkbox" id="spot-double" checked> 2-candle</label>
         <label><input type="checkbox" id="spot-triple" checked> 3-candle</label>
+        <label><input type="checkbox" id="spot-multi" checked> 5-candle</label>
       </fieldset>
       <p class="note">Spinning tops are left out here. They appear so often in normal price action that a chart rarely has just one.</p>
     </div>
@@ -113,19 +117,64 @@
     </div>
   </section>
 
+  <!-- SETUPS -->
+  <section id="panel-setups" role="tabpanel" aria-labelledby="tab-setups" class="panel" hidden>
+    <div class="setup-intro">
+      <p class="note">A pattern on its own gives no edge. The Monster Guide (pp. 14 and 20) only takes a reversal pattern when three things line up. Grade each chart against them, then check.</p>
+    </div>
+    <div class="scoreline" aria-live="polite">
+      <span><b id="setup-score">0</b>/<span id="setup-total">0</span> graded correctly</span>
+      <span>Streak <b id="setup-streak">0</b></span>
+    </div>
+    <div class="workbench">
+      <figure class="chart-card">
+        <figcaption class="chart-head">
+          <span class="instrument" id="setup-instrument">EUR/USD · H4</span>
+          <span class="legend"><span class="key-ma"></span>20-period average <span class="key-level"></span><span id="setup-level-name">Support</span></span>
+          <span class="ohlc" id="setup-ohlc">Hover a candle for O H L C</span>
+        </figcaption>
+        <div class="chart-wrap"><svg id="setup-chart" class="chart" role="img" aria-label="Candlestick chart with a moving average and a support or resistance level"></svg></div>
+      </figure>
+      <div class="answer-col">
+        <h2 class="prompt">Grade this <span class="target" id="setup-target">Hammer</span></h2>
+        <p class="hint">The pattern is shaded and ends on the last candle. Answer each check.</p>
+        <div class="checks" id="setup-checks">
+          <div class="check" data-check="trend">
+            <div><p class="check-title">With the bigger trend</p><p class="check-desc" id="setup-desc-trend">The 20-period average is rising.</p></div>
+            <div class="seg" role="group" aria-label="With the bigger trend"><button type="button" data-v="yes">Yes</button><button type="button" data-v="no">No</button></div>
+          </div>
+          <div class="check" data-check="level">
+            <div><p class="check-title">At the level</p><p class="check-desc" id="setup-desc-level">The pattern reaches support and closes back above it.</p></div>
+            <div class="seg" role="group" aria-label="At the level"><button type="button" data-v="yes">Yes</button><button type="button" data-v="no">No</button></div>
+          </div>
+          <div class="check" data-check="size">
+            <div><p class="check-title">Bigger than earlier candles</p><p class="check-desc">The last candle’s range is at least 1.3× the average of the 10 before the pattern.</p></div>
+            <div class="seg" role="group" aria-label="Bigger than earlier candles"><button type="button" data-v="yes">Yes</button><button type="button" data-v="no">No</button></div>
+          </div>
+        </div>
+        <button type="button" class="primary" id="setup-check" disabled>Check my grading</button>
+        <div class="feedback" id="setup-feedback" hidden></div>
+        <button type="button" class="primary" id="setup-next" hidden>Next setup</button>
+      </div>
+    </div>
+  </section>
+
   <!-- LIBRARY -->
   <section id="panel-library" role="tabpanel" aria-labelledby="tab-library" class="panel" hidden>
     <div class="library-intro">
       <h2>Pattern library</h2>
-      <p>The rules below are the exact ones the drills use to check every chart. Each example is drawn fresh by the same generator.</p>
+      <p>The rules below are the exact ones the drills use to check every chart. Each card cites the source document it comes from, and notes where the sources disagree.</p>
       <div class="chips" id="lib-filter" role="group" aria-label="Filter patterns">
         <button type="button" class="chip" data-f="all" aria-pressed="true">All</button>
         <button type="button" class="chip" data-f="single" aria-pressed="false">1-candle</button>
         <button type="button" class="chip" data-f="double" aria-pressed="false">2-candle</button>
         <button type="button" class="chip" data-f="triple" aria-pressed="false">3-candle</button>
+        <button type="button" class="chip" data-f="multi" aria-pressed="false">5-candle</button>
         <button type="button" class="chip" data-f="bullish" aria-pressed="false">Bullish</button>
         <button type="button" class="chip" data-f="bearish" aria-pressed="false">Bearish</button>
-        <button type="button" class="chip" data-f="neutral" aria-pressed="false">Indecision</button>
+        <button type="button" class="chip" data-f="reversal" aria-pressed="false">Reversal</button>
+        <button type="button" class="chip" data-f="continuation" aria-pressed="false">Continuation</button>
+        <button type="button" class="chip" data-f="indecision" aria-pressed="false">Indecision</button>
       </div>
     </div>
     <div class="cards" id="lib-cards"></div>
@@ -138,6 +187,12 @@
         <li><b>Wait for the close.</b> A candle isn't a pattern until it closes. A hammer half-way through the session can still finish as a bearish candle.</li>
         <li><b>Plan the risk first.</b> Most patterns give a natural stop beyond the wick extreme. Size the position from that distance, not the other way round.</li>
       </ul>
+    </aside>
+    <aside class="forex-notes sources" id="sources">
+      <h3>Sources</h3>
+      <ul id="source-list"></ul>
+      <h4>Problems found in the sources</h4>
+      <ul id="source-issues"></ul>
     </aside>
   </section>
 
@@ -160,7 +215,7 @@
   </section>
 
   <footer class="foot">
-    <p>Charts are generated for practice, not live market data. Candlestick patterns describe probabilities, not certainties; treat every one as a prompt to check location, trend and risk.</p>
+    <p>Charts are generated for practice, not live market data. Pattern rules follow <i>The Monster Guide to Candlestick Patterns</i> (Rayner Teo) and the <i>58 Candlestick Patterns PDF Manual</i> (tradingpdf.net), with differences noted in the Library. Candlestick patterns describe probabilities, not certainties; treat every one as a prompt to check location, trend and risk.</p>
   </footer>
 </div>
 <!--BODY-END-->
