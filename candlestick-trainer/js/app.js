@@ -1,0 +1,562 @@
+/* Wick Reader UI: drill, spot, library and progress views. */
+(function () {
+  'use strict';
+  const L = window.CandleLab;
+  const { PATTERNS, BY_ID } = L;
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const $ = (id) => document.getElementById(id);
+  const rng = L.mulberry32((Date.now() ^ (Math.random() * 1e9)) >>> 0);
+  const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const BIAS_LABEL = { bullish: 'Bullish', bearish: 'Bearish', neutral: 'Indecision' };
+  const TREND_LABEL = { down: 'after a decline', up: 'after a rally', null: 'in any trend' };
+
+  // ---------- persistence (per-viewer convenience only) ----------
+  const KEY = 'wick-reader.v1';
+  function load() {
+    try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; }
+  }
+  const saved = load();
+  const stats = saved.stats || {};
+  const prefs = Object.assign(
+    { mode: 'name', groups: { single: true, double: true, triple: true }, spotGroups: { single: true, double: true, triple: true }, highlight: true, adaptive: true, tab: 'drill', best: 0 },
+    saved.prefs || {}
+  );
+  function persist() {
+    try { localStorage.setItem(KEY, JSON.stringify({ stats, prefs })); } catch (e) { /* storage unavailable */ }
+  }
+  function stat(id) {
+    return (stats[id] = stats[id] || { a: 0, c: 0, sa: 0, sc: 0, mix: {} });
+  }
+
+  // ---------- chart rendering ----------
+  function el(name, attrs, parent) {
+    const n = document.createElementNS(SVGNS, name);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+
+  function niceStep(raw) {
+    const p = 10 ** Math.floor(Math.log10(raw));
+    for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= raw) return m * p;
+    return 10 * p;
+  }
+
+  const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // Candle open times, skipping the FX weekend, ending in the most recent full week.
+  function candleTimes(n, minutes) {
+    const out = [];
+    let t = Date.UTC(2026, 9, 9, 21 - (minutes >= 1440 ? 21 : minutes / 60), 0);
+    while (out.length < n) {
+      const d = new Date(t);
+      const wd = d.getUTCDay();
+      if (wd !== 0 && wd !== 6) out.unshift(d);
+      t -= minutes * 60000;
+    }
+    return out;
+  }
+  function timeLabel(d, minutes) {
+    if (minutes >= 1440) return MONTHS[d.getUTCMonth()] + ' ' + d.getUTCDate();
+    return DAYS[d.getUTCDay()] + ' ' + String(d.getUTCHours()).padStart(2, '0') + ':00';
+  }
+
+  function renderChart(svg, chart, opts = {}) {
+    const cs = chart.candles;
+    const compact = !!opts.compact;
+    const measured = Math.round(svg.getBoundingClientRect().width);
+    const W = opts.width || (measured ? Math.max(300, measured) : 760);
+    const H = opts.height || (W < 600 ? 320 : 360);
+    if (!compact) svg._render = [chart, opts];
+    const pad = compact ? { l: 8, r: 8, t: 10, b: 10 } : { l: 8, r: 72, t: 14, b: 26 };
+    const pw = W - pad.l - pad.r;
+    const ph = H - pad.t - pad.b;
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+    let lo = Infinity, hi = -Infinity;
+    for (const k of cs) { lo = Math.min(lo, k.l); hi = Math.max(hi, k.h); }
+    const span = hi - lo || 1;
+    lo -= span * 0.06; hi += span * 0.06;
+    const y = (p) => pad.t + ((hi - p) / (hi - lo)) * ph;
+    const slot = pw / cs.length;
+    const x = (i) => pad.l + slot * (i + 0.5);
+    const bw = Math.max(2, slot * 0.62);
+    const dp = chart.pair ? chart.pair.dp : 5;
+
+    // shading for the pattern
+    if (opts.shade) {
+      const [s, e] = opts.shade;
+      el('rect', { class: 'shade', x: pad.l + slot * s, y: pad.t, width: slot * (e - s + 1), height: ph, rx: 3 }, svg);
+    }
+
+    if (!compact) {
+      const step = niceStep((hi - lo) / 5);
+      const tagY = y(cs[cs.length - 1].c);
+      for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) {
+        const yy = y(v);
+        el('line', { class: 'gridline', x1: pad.l, x2: pad.l + pw, y1: yy, y2: yy }, svg);
+        if (opts.lastTag !== false && Math.abs(yy - tagY) < 16) continue; // keep clear of the price tag
+        const t = el('text', { x: W - pad.r + 6, y: yy + 4 }, svg);
+        t.textContent = v.toFixed(dp);
+      }
+      const times = candleTimes(cs.length, chart.tf.minutes);
+      const every = Math.max(1, Math.round(cs.length / Math.max(2, Math.floor(pw / 110))));
+      for (let i = cs.length - 1; i >= 0; i -= every) {
+        const t = el('text', { x: x(i), y: H - 8, 'text-anchor': 'middle' }, svg);
+        t.textContent = timeLabel(times[i], chart.tf.minutes);
+      }
+    }
+
+    const hover = el('rect', { class: 'hover-col', x: 0, y: pad.t, width: slot, height: ph, visibility: 'hidden' }, svg);
+    const marks = el('g', {}, svg);
+    for (const m of opts.marks || []) {
+      const [s, e] = m.range;
+      el('rect', { class: m.cls, x: pad.l + slot * s + 1, y: pad.t + 1, width: slot * (e - s + 1) - 2, height: ph - 2, rx: 4 }, marks);
+    }
+
+    cs.forEach((k, i) => {
+      const cls = k.c >= k.o ? 'bull' : 'bear';
+      el('line', { class: cls, x1: x(i), x2: x(i), y1: y(k.h), y2: y(k.l), 'stroke-width': compact ? 1.5 : 1.2 }, svg);
+      const top = y(Math.max(k.o, k.c));
+      const h = Math.max(1, Math.abs(y(k.o) - y(k.c)));
+      el('rect', { class: cls, x: x(i) - bw / 2, y: top, width: bw, height: h, 'stroke-width': 0 }, svg);
+    });
+
+    if (!compact && opts.lastTag !== false) {
+      const last = cs[cs.length - 1].c;
+      const yy = y(last);
+      el('line', { class: 'last-line', x1: pad.l, x2: W - pad.r, y1: yy, y2: yy }, svg);
+      el('rect', { class: 'last-tag', x: W - pad.r + 2, y: yy - 9, width: pad.r - 4, height: 18, rx: 3 }, svg);
+      const t = el('text', { class: 'last-tag-text', x: W - pad.r + 6, y: yy + 4 }, svg);
+      t.textContent = last.toFixed(dp);
+    }
+
+    if (compact) return;
+
+    // hover / pick interaction
+    const ohlcEl = opts.ohlcEl;
+    let cur = -1;
+    const show = (i) => {
+      cur = i;
+      if (i < 0) { hover.setAttribute('visibility', 'hidden'); if (ohlcEl) ohlcEl.textContent = 'Hover a candle for O H L C'; return; }
+      hover.setAttribute('x', pad.l + slot * i);
+      hover.setAttribute('visibility', 'visible');
+      const k = cs[i];
+      const pips = Math.round((k.h - k.l) / chart.pair.pip);
+      if (ohlcEl) ohlcEl.textContent = `O ${k.o.toFixed(dp)}  H ${k.h.toFixed(dp)}  L ${k.l.toFixed(dp)}  C ${k.c.toFixed(dp)}  ${pips}p`;
+    };
+    const idxFrom = (ev) => {
+      const pt = svg.createSVGPoint();
+      pt.x = ev.clientX; pt.y = ev.clientY;
+      const m = svg.getScreenCTM();
+      if (!m) return -1;
+      const p = pt.matrixTransform(m.inverse());
+      const i = Math.floor((p.x - pad.l) / slot);
+      return i >= 0 && i < cs.length ? i : -1;
+    };
+    svg.onpointermove = (ev) => show(idxFrom(ev));
+    svg.onpointerleave = () => show(-1);
+    if (opts.onPick) {
+      svg.setAttribute('tabindex', '0');
+      svg.onclick = (ev) => { const i = idxFrom(ev); if (i >= 0) opts.onPick(i); };
+      svg.onkeydown = (ev) => {
+        if (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') {
+          ev.preventDefault();
+          const d = ev.key === 'ArrowLeft' ? -1 : 1;
+          show(Math.min(cs.length - 1, Math.max(0, (cur < 0 ? cs.length : cur) + d)));
+        } else if ((ev.key === 'Enter' || ev.key === ' ') && cur >= 0) {
+          ev.preventDefault();
+          opts.onPick(cur);
+        }
+      };
+    } else {
+      svg.removeAttribute('tabindex');
+      svg.onclick = null;
+      svg.onkeydown = null;
+    }
+  }
+
+  // ---------- shared helpers ----------
+  const biasChip = (sig) => `<span class="bias ${sig}">${BIAS_LABEL[sig]}</span>`;
+
+  function measureHtml(chart, index, id) {
+    const ex = L.explain(chart.candles, index, id);
+    const move = (ex.move > 0 ? '+' : ex.move < 0 ? '−' : '') + Math.abs(ex.move).toFixed(1);
+    const trendWord = ex.trend === 'down' ? 'falling' : ex.trend === 'up' ? 'rising' : 'no clear trend';
+    const rows = [`Trend into it: ${trendWord} (${move} avg ranges over 6 candles)`];
+    ex.candles.forEach((c, n) => {
+      const label = ex.candles.length > 1 ? `Candle ${n + 1}` : 'Candle';
+      rows.push(`${label}: ${c.colour}, body ${c.bodyPct}%, upper wick ${c.upperPct}%, lower wick ${c.lowerPct}%, size ${c.rangeAtr}× avg`);
+    });
+    return `<ul class="measure">${rows.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>`;
+  }
+
+  function lessonHtml(def) {
+    return `
+      <p class="label">How to recognise it</p>
+      <ul>${def.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
+      <p class="label">What it suggests</p>
+      <p>${esc(def.meaning)}</p>
+      <p class="label">Before acting</p>
+      <p>${esc(def.confirm)}</p>`;
+  }
+
+  function weightedPick(pool, kind) {
+    if (pool.length === 1) return pool[0];
+    const last = kind === 'spot' ? spot.lastId : drill.lastId;
+    const cands = pool.filter((p) => p.id !== last);
+    if (!prefs.adaptive) return cands[Math.floor(rng() * cands.length)];
+    const w = cands.map((p) => {
+      const s = stat(p.id);
+      const a = kind === 'spot' ? s.sa : s.a;
+      const c = kind === 'spot' ? s.sc : s.c;
+      return 1 - (c + 1) / (a + 2) + 0.15; // Laplace-smoothed error rate plus a floor
+    });
+    let r = rng() * w.reduce((x, y) => x + y, 0);
+    for (let i = 0; i < cands.length; i++) { r -= w[i]; if (r <= 0) return cands[i]; }
+    return cands[cands.length - 1];
+  }
+
+  // ---------- drill ----------
+  const drill = { q: null, answered: false, score: 0, total: 0, streak: 0, focus: null, lastId: null };
+
+  function drillPool() {
+    if (drill.focus) return [BY_ID[drill.focus]];
+    const pool = PATTERNS.filter((p) => prefs.groups[p.group]);
+    return pool.length ? pool : PATTERNS;
+  }
+
+  function buildOptions(q) {
+    if (prefs.mode === 'bias') {
+      return ['bullish', 'bearish', 'neutral'].map((b) => ({ value: b, label: BIAS_LABEL[b] }));
+    }
+    const def = BY_ID[q.id];
+    const taken = new Set(q.matches);
+    const chosen = [def.id];
+    const add = (id) => { if (!taken.has(id) && !chosen.includes(id) && chosen.length < 4) chosen.push(id); };
+    shuffle(def.confuse.slice()).slice(0, 2).forEach(add);
+    shuffle(drillPool().map((p) => p.id)).forEach(add);
+    shuffle(PATTERNS.map((p) => p.id)).forEach(add);
+    return shuffle(chosen).map((id) => ({ value: id, label: BY_ID[id].name }));
+  }
+
+  function newDrill() {
+    const target = weightedPick(drillPool(), 'drill');
+    drill.lastId = target.id;
+    drill.q = L.generateDrill(target.id, rng);
+    drill.q.options = buildOptions(drill.q);
+    drill.answered = false;
+    $('drill-prompt').textContent = prefs.mode === 'bias' ? 'Which way does this pattern lean?' : 'Which pattern just formed?';
+    $('drill-hint').textContent = (prefs.mode === 'bias' ? 'The pattern ends on the last candle. Keys 1–3 answer' : 'The pattern ends on the last candle. Keys 1–4 answer') + ', Enter moves on.';
+    $('drill-feedback').hidden = true;
+    $('drill-next').hidden = true;
+    drawDrill();
+    const box = $('drill-options');
+    box.innerHTML = '';
+    drill.q.options.forEach((o, n) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'opt';
+      b.dataset.value = o.value;
+      b.innerHTML = `<span class="key">${n + 1}</span><span>${esc(o.label)}</span>`;
+      b.addEventListener('click', () => answerDrill(o.value));
+      box.appendChild(b);
+    });
+  }
+
+  function drawDrill(reveal) {
+    const q = drill.q;
+    $('drill-instrument').textContent = `${q.pair.symbol} · ${q.tf.tf}`;
+    renderChart($('drill-chart'), q, {
+      shade: prefs.highlight || reveal ? [q.start, q.index] : null,
+      ohlcEl: $('drill-ohlc'),
+    });
+  }
+
+  function answerDrill(value) {
+    if (drill.answered) return;
+    drill.answered = true;
+    const q = drill.q;
+    const def = BY_ID[q.id];
+    const s = stat(q.id);
+    let ok;
+    if (prefs.mode === 'bias') ok = q.matches.some((id) => BY_ID[id].signal === value);
+    else ok = q.matches.includes(value);
+    s.a++;
+    if (ok) s.c++;
+    else if (prefs.mode === 'name') s.mix[value] = (s.mix[value] || 0) + 1;
+    drill.total++;
+    if (ok) { drill.score++; drill.streak++; } else drill.streak = 0;
+    prefs.best = Math.max(prefs.best, drill.streak);
+    persist();
+
+    for (const b of $('drill-options').children) {
+      b.disabled = true;
+      const v = b.dataset.value;
+      const right = prefs.mode === 'bias' ? v === def.signal : v === def.id;
+      if (right) b.classList.add('correct');
+      else if (v === value) b.classList.add('wrong');
+      else b.classList.add('dim');
+    }
+    drawDrill(true);
+
+    const others = q.matches.filter((id) => id !== q.id);
+    let html = `<p class="verdict">${ok ? 'Correct.' : 'Not this time.'}</p>
+      <h3>${esc(def.name)} ${biasChip(def.signal)}</h3>`;
+    if (others.length) html += `<p>This chart also qualifies as ${others.map((id) => '<b>' + esc(BY_ID[id].name) + '</b>').join(' and ')}.</p>`;
+    html += `<p class="label">What the chart shows</p>${measureHtml(q, q.index, q.id)}${lessonHtml(def)}`;
+    if (!ok && prefs.mode === 'name' && BY_ID[value]) {
+      const w = BY_ID[value];
+      html += `<p class="label">Why not ${esc(w.name)}</p><ul>${w.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>`;
+    }
+    const fb = $('drill-feedback');
+    fb.className = 'feedback ' + (ok ? 'ok' : 'bad');
+    fb.innerHTML = html;
+    fb.hidden = false;
+    $('drill-next').hidden = false;
+    $('drill-next').focus({ preventScroll: true });
+    updateScores();
+  }
+
+  function setFocus(id) {
+    drill.focus = id;
+    $('drill-focus').hidden = !id;
+    if (id) $('drill-focus-name').textContent = BY_ID[id].name;
+  }
+
+  // ---------- spot ----------
+  const spot = { q: null, done: false, score: 0, total: 0, streak: 0, lastId: null };
+
+  function spotPool() {
+    const pool = PATTERNS.filter((p) => p.spot !== false && prefs.spotGroups[p.group]);
+    return pool.length ? pool : PATTERNS.filter((p) => p.spot !== false);
+  }
+
+  function newSpot() {
+    const target = weightedPick(spotPool(), 'spot');
+    spot.lastId = target.id;
+    spot.q = L.generateSpot(target.id, rng);
+    spot.done = false;
+    $('spot-target').textContent = target.name;
+    $('spot-instrument').textContent = `${spot.q.pair.symbol} · ${spot.q.tf.tf}`;
+    $('spot-feedback').hidden = true;
+    $('spot-next').hidden = true;
+    $('spot-reveal').hidden = false;
+    renderChart($('spot-chart'), spot.q, { ohlcEl: $('spot-ohlc'), onPick: pickSpot, lastTag: true });
+  }
+
+  function pickSpot(i, gaveUp) {
+    if (spot.done) return;
+    spot.done = true;
+    const q = spot.q;
+    const def = BY_ID[q.id];
+    const ok = !gaveUp && L.matches(q.candles, i, q.id);
+    const s = stat(q.id);
+    s.sa++;
+    if (ok) s.sc++;
+    spot.total++;
+    if (ok) { spot.score++; spot.streak++; } else spot.streak = 0;
+    persist();
+
+    const marks = [{ range: [q.start, q.index], cls: 'mark-ok' }];
+    if (!ok && !gaveUp) marks.push({ range: [i, i], cls: 'mark-bad' });
+    renderChart($('spot-chart'), q, { ohlcEl: $('spot-ohlc'), marks });
+
+    let html;
+    if (ok) html = `<p class="verdict">Found it.</p>`;
+    else if (gaveUp) html = `<p class="verdict">Here it is, outlined in green.</p>`;
+    else {
+      const other = L.detectAt(q.candles, i).map((id) => BY_ID[id].name);
+      html = `<p class="verdict">Not that candle. The ${esc(def.name)} is outlined in green.</p>`;
+      if (other.length) html += `<p>The candle you picked completes ${other.map((n) => '<b>' + esc(n) + '</b>').join(' and ')} instead.</p>`;
+    }
+    html += `<h3>${esc(def.name)} ${biasChip(def.signal)}</h3><p class="label">What the chart shows</p>${measureHtml(q, q.index, q.id)}${lessonHtml(def)}`;
+    const fb = $('spot-feedback');
+    fb.className = 'feedback ' + (ok ? 'ok' : 'bad');
+    fb.innerHTML = html;
+    fb.hidden = false;
+    $('spot-reveal').hidden = true;
+    $('spot-next').hidden = false;
+    $('spot-next').focus({ preventScroll: true });
+    updateScores();
+  }
+
+  function updateScores() {
+    $('drill-score').textContent = drill.score;
+    $('drill-total').textContent = drill.total;
+    $('drill-streak').textContent = drill.streak;
+    $('drill-best').textContent = prefs.best;
+    $('spot-score').textContent = spot.score;
+    $('spot-total').textContent = spot.total;
+    $('spot-streak').textContent = spot.streak;
+  }
+
+  // ---------- library ----------
+  function buildLibrary() {
+    const box = $('lib-cards');
+    box.innerHTML = '';
+    PATTERNS.forEach((def, n) => {
+      const card = document.createElement('article');
+      card.className = 'card';
+      card.dataset.group = def.group;
+      card.dataset.signal = def.signal;
+      const ex = L.generateDrill(def.id, L.mulberry32(1000 + n * 7919), { length: 12 });
+      card.innerHTML = `
+        <div class="card-art"><svg class="chart" role="img" aria-label="Example ${esc(def.name)}"></svg></div>
+        <div class="card-head"><h3>${esc(def.name)}</h3>${biasChip(def.signal)}</div>
+        <div class="card-body">
+          <p class="card-meta">${def.candles} candle${def.candles > 1 ? 's' : ''} · ${TREND_LABEL[def.trend]}</p>
+          <ul>${def.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
+          <p class="label">What it suggests</p><p>${esc(def.meaning)}</p>
+          <p class="label">Before acting</p><p>${esc(def.confirm)}</p>
+        </div>
+        <div class="card-foot"><span class="card-meta">Shaded: the pattern</span><button type="button" class="ghost">Practise this</button></div>`;
+      renderChart(card.querySelector('svg'), ex, { compact: true, width: 320, height: 150, shade: [ex.start, ex.index] });
+      card.querySelector('button').addEventListener('click', () => practise(def.id));
+      box.appendChild(card);
+    });
+  }
+
+  function filterLibrary(f) {
+    for (const b of $('lib-filter').children) b.setAttribute('aria-pressed', String(b.dataset.f === f));
+    for (const c of $('lib-cards').children) {
+      c.hidden = !(f === 'all' || c.dataset.group === f || c.dataset.signal === f);
+    }
+  }
+
+  function practise(id) {
+    setFocus(id);
+    showTab('drill');
+    newDrill();
+  }
+
+  // ---------- progress ----------
+  function accCell(a, c) {
+    if (!a) return '<span class="measure">–</span>';
+    const pct = Math.round((100 * c) / a);
+    const cls = pct < 60 ? 'low' : pct >= 85 ? 'high' : '';
+    return `<span class="acc"><span class="acc-bar"><i class="${cls}" style="width:${pct}%"></i></span>${pct}% <span class="measure">${c}/${a}</span></span>`;
+  }
+
+  function renderProgress() {
+    const rows = PATTERNS.map((def) => {
+      const s = stat(def.id);
+      const mix = Object.entries(s.mix).sort((a, b) => b[1] - a[1])[0];
+      return { def, s, mix };
+    });
+    let a = 0, c = 0, sa = 0, sc = 0;
+    rows.forEach(({ s }) => { a += s.a; c += s.c; sa += s.sa; sc += s.sc; });
+    const tried = rows.filter((r) => r.s.a >= 3).sort((x, y) => x.s.c / x.s.a - y.s.c / y.s.a);
+    const parts = [];
+    if (a) parts.push(`Drill: ${c}/${a} correct (${Math.round((100 * c) / a)}%)`);
+    if (sa) parts.push(`Spot: ${sc}/${sa} found (${Math.round((100 * sc) / sa)}%)`);
+    if (tried.length && tried[0].s.c < tried[0].s.a) parts.push(`Weakest so far: ${tried[0].def.name}`);
+    $('prog-summary').textContent = parts.length ? parts.join(' · ') + '.' : 'No answers yet. Results from Drill and Spot appear here, saved in this browser only.';
+
+    $('prog-rows').innerHTML = rows.map(({ def, s, mix }) => `
+      <tr>
+        <th scope="row">${esc(def.name)}</th>
+        <td>${biasChip(def.signal)}</td>
+        <td class="num">${s.a + s.sa}</td>
+        <td><div>${accCell(s.a, s.c)}</div>${def.spot === false ? '' : `<div class="measure">Spot ${s.sa ? Math.round((100 * s.sc) / s.sa) + '% (' + s.sc + '/' + s.sa + ')' : '–'}</div>`}</td>
+        <td class="mixed">${mix ? esc(BY_ID[mix[0]].name) + ' ×' + mix[1] : ''}</td>
+        <td><button type="button" class="link" data-practise="${def.id}">Practise</button></td>
+      </tr>`).join('');
+  }
+
+  // ---------- tabs ----------
+  const TABS = ['drill', 'spot', 'library', 'progress'];
+  function showTab(name) {
+    if (!TABS.includes(name)) name = 'drill';
+    TABS.forEach((t) => {
+      $('tab-' + t).setAttribute('aria-selected', String(t === name));
+      $('tab-' + t).tabIndex = t === name ? 0 : -1;
+      $('panel-' + t).hidden = t !== name;
+    });
+    prefs.tab = name;
+    persist();
+    const svg = $(name + '-chart');
+    if (svg && svg._render) renderChart(svg, ...svg._render); // re-measure now the panel is visible
+    if (name === 'spot' && !spot.q) newSpot();
+    if (name === 'progress') renderProgress();
+  }
+
+  // ---------- wiring ----------
+  function init() {
+    $('drill-mode').value = prefs.mode;
+    ['single', 'double', 'triple'].forEach((g) => {
+      $('grp-' + g).checked = prefs.groups[g];
+      $('spot-' + g).checked = prefs.spotGroups[g];
+      $('grp-' + g).addEventListener('change', (e) => { prefs.groups[g] = e.target.checked; setFocus(null); persist(); newDrill(); });
+      $('spot-' + g).addEventListener('change', (e) => { prefs.spotGroups[g] = e.target.checked; persist(); newSpot(); });
+    });
+    $('opt-highlight').checked = prefs.highlight;
+    $('opt-adaptive').checked = prefs.adaptive;
+    $('drill-mode').addEventListener('change', (e) => { prefs.mode = e.target.value; persist(); newDrill(); });
+    $('opt-highlight').addEventListener('change', (e) => { prefs.highlight = e.target.checked; persist(); if (drill.q) drawDrill(drill.answered); });
+    $('opt-adaptive').addEventListener('change', (e) => { prefs.adaptive = e.target.checked; persist(); });
+    $('drill-focus-clear').addEventListener('click', () => { setFocus(null); newDrill(); });
+    $('drill-next').addEventListener('click', newDrill);
+    $('spot-next').addEventListener('click', newSpot);
+    $('spot-reveal').addEventListener('click', () => pickSpot(-1, true));
+
+    TABS.forEach((t, n) => {
+      const b = $('tab-' + t);
+      b.addEventListener('click', () => showTab(t));
+      b.addEventListener('keydown', (e) => {
+        if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+        const next = TABS[(n + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length];
+        showTab(next);
+        $('tab-' + next).focus();
+      });
+    });
+
+    $('lib-filter').addEventListener('click', (e) => { const b = e.target.closest('[data-f]'); if (b) filterLibrary(b.dataset.f); });
+    $('prog-rows').addEventListener('click', (e) => { const b = e.target.closest('[data-practise]'); if (b) practise(b.dataset.practise); });
+    $('prog-reset').addEventListener('click', () => { $('prog-confirm').hidden = false; $('prog-reset').hidden = true; });
+    $('prog-reset-no').addEventListener('click', () => { $('prog-confirm').hidden = true; $('prog-reset').hidden = false; });
+    $('prog-reset-yes').addEventListener('click', () => {
+      for (const k of Object.keys(stats)) delete stats[k];
+      prefs.best = 0;
+      persist();
+      $('prog-confirm').hidden = true;
+      $('prog-reset').hidden = false;
+      updateScores();
+      renderProgress();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if ($('panel-drill').hidden || e.altKey || e.ctrlKey || e.metaKey) return;
+      const tag = (e.target.tagName || '').toLowerCase();
+      if (tag === 'select' || tag === 'input') return;
+      if (!drill.answered && /^[1-4]$/.test(e.key)) {
+        const b = $('drill-options').children[+e.key - 1];
+        if (b) { e.preventDefault(); b.click(); }
+      } else if (drill.answered && e.key === 'Enter' && e.target === document.body) {
+        e.preventDefault();
+        newDrill();
+      }
+    });
+
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        for (const id of ['drill-chart', 'spot-chart']) {
+          const svg = $(id);
+          if (svg._render && svg.getBoundingClientRect().width) renderChart(svg, ...svg._render);
+        }
+      }, 150);
+    });
+
+    buildLibrary();
+    newDrill();
+    updateScores();
+    const hash = location.hash.replace('#', '');
+    showTab(TABS.includes(hash) ? hash : prefs.tab);
+  }
+
+  init();
+})();

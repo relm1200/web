@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wick Reader</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<!--BODY-START-->
+<div class="app">
+  <header class="masthead">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 32" width="18" height="24"><line x1="12" y1="1" x2="12" y2="31" stroke="currentColor" stroke-width="2"/><rect x="5" y="9" width="14" height="13" fill="currentColor"/></svg></span>
+      <div>
+        <h1>Wick Reader</h1>
+        <p class="tagline">Forex candlestick pattern trainer</p>
+      </div>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button role="tab" id="tab-drill" aria-controls="panel-drill" aria-selected="true">Drill</button>
+      <button role="tab" id="tab-spot" aria-controls="panel-spot" aria-selected="false">Spot</button>
+      <button role="tab" id="tab-library" aria-controls="panel-library" aria-selected="false">Library</button>
+      <button role="tab" id="tab-progress" aria-controls="panel-progress" aria-selected="false">Progress</button>
+    </nav>
+  </header>
+
+  <!-- DRILL -->
+  <section id="panel-drill" role="tabpanel" aria-labelledby="tab-drill" class="panel">
+    <div class="toolbar">
+      <div class="field">
+        <label for="drill-mode">Question</label>
+        <select id="drill-mode">
+          <option value="name">Name the pattern</option>
+          <option value="bias">Call the bias</option>
+        </select>
+      </div>
+      <fieldset class="field groups">
+        <legend>Patterns</legend>
+        <label><input type="checkbox" id="grp-single" checked> 1-candle</label>
+        <label><input type="checkbox" id="grp-double" checked> 2-candle</label>
+        <label><input type="checkbox" id="grp-triple" checked> 3-candle</label>
+      </fieldset>
+      <fieldset class="field groups">
+        <legend>Assist</legend>
+        <label><input type="checkbox" id="opt-highlight" checked> Shade pattern</label>
+        <label><input type="checkbox" id="opt-adaptive" checked> Focus weak spots</label>
+      </fieldset>
+      <div class="focus-chip" id="drill-focus" hidden>
+        Practising <strong id="drill-focus-name"></strong>
+        <button type="button" class="link" id="drill-focus-clear">Show all</button>
+      </div>
+    </div>
+
+    <div class="scoreline" aria-live="polite">
+      <span><b id="drill-score">0</b>/<span id="drill-total">0</span> correct</span>
+      <span>Streak <b id="drill-streak">0</b></span>
+      <span>Best <b id="drill-best">0</b></span>
+    </div>
+
+    <div class="workbench">
+      <figure class="chart-card">
+        <figcaption class="chart-head">
+          <span class="instrument" id="drill-instrument">EUR/USD · H4</span>
+          <span class="ohlc" id="drill-ohlc">Hover a candle for O H L C</span>
+        </figcaption>
+        <div class="chart-wrap"><svg id="drill-chart" class="chart" role="img" aria-label="Candlestick chart"></svg></div>
+      </figure>
+
+      <div class="answer-col">
+        <h2 class="prompt" id="drill-prompt">Which pattern just formed?</h2>
+        <p class="hint" id="drill-hint">The pattern ends on the last candle. Keys 1–4 answer, Enter moves on.</p>
+        <div class="options" id="drill-options"></div>
+        <div class="feedback" id="drill-feedback" hidden></div>
+        <button type="button" class="primary" id="drill-next" hidden>Next chart</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- SPOT -->
+  <section id="panel-spot" role="tabpanel" aria-labelledby="tab-spot" class="panel" hidden>
+    <div class="toolbar">
+      <fieldset class="field groups">
+        <legend>Patterns</legend>
+        <label><input type="checkbox" id="spot-single" checked> 1-candle</label>
+        <label><input type="checkbox" id="spot-double" checked> 2-candle</label>
+        <label><input type="checkbox" id="spot-triple" checked> 3-candle</label>
+      </fieldset>
+      <p class="note">Spinning tops are left out here. They appear so often in normal price action that a chart rarely has just one.</p>
+    </div>
+    <div class="scoreline" aria-live="polite">
+      <span><b id="spot-score">0</b>/<span id="spot-total">0</span> found</span>
+      <span>Streak <b id="spot-streak">0</b></span>
+    </div>
+    <h2 class="prompt">Find the <span class="target" id="spot-target">Hammer</span></h2>
+    <p class="hint">Tap or click the candle that <em>completes</em> it. The candles after it show what price did next.</p>
+    <figure class="chart-card wide">
+      <figcaption class="chart-head">
+        <span class="instrument" id="spot-instrument">EUR/USD · H4</span>
+        <span class="ohlc" id="spot-ohlc">Hover a candle for O H L C</span>
+      </figcaption>
+      <div class="chart-wrap"><svg id="spot-chart" class="chart pickable" role="img" aria-label="Candlestick chart, choose a candle"></svg></div>
+    </figure>
+    <div class="spot-actions">
+      <div class="feedback" id="spot-feedback" hidden></div>
+      <div class="row">
+        <button type="button" class="ghost" id="spot-reveal">Show me</button>
+        <button type="button" class="primary" id="spot-next" hidden>Next chart</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- LIBRARY -->
+  <section id="panel-library" role="tabpanel" aria-labelledby="tab-library" class="panel" hidden>
+    <div class="library-intro">
+      <h2>Pattern library</h2>
+      <p>The rules below are the exact ones the drills use to check every chart. Each example is drawn fresh by the same generator.</p>
+      <div class="chips" id="lib-filter" role="group" aria-label="Filter patterns">
+        <button type="button" class="chip" data-f="all" aria-pressed="true">All</button>
+        <button type="button" class="chip" data-f="single" aria-pressed="false">1-candle</button>
+        <button type="button" class="chip" data-f="double" aria-pressed="false">2-candle</button>
+        <button type="button" class="chip" data-f="triple" aria-pressed="false">3-candle</button>
+        <button type="button" class="chip" data-f="bullish" aria-pressed="false">Bullish</button>
+        <button type="button" class="chip" data-f="bearish" aria-pressed="false">Bearish</button>
+        <button type="button" class="chip" data-f="neutral" aria-pressed="false">Indecision</button>
+      </div>
+    </div>
+    <div class="cards" id="lib-cards"></div>
+    <aside class="forex-notes">
+      <h3>Reading candles on forex charts</h3>
+      <ul>
+        <li><b>Gaps are rare.</b> Spot FX trades around the clock from Sunday evening to Friday, so each candle usually opens at the previous close. Stars, piercing lines and dark clouds are judged on bodies and closes, not gaps.</li>
+        <li><b>Higher timeframes are cleaner.</b> H4 and daily candles filter out intraday noise. The daily candle most brokers use closes at 17:00 New York time.</li>
+        <li><b>Location matters more than shape.</b> A hammer at a tested support level or round number (1.0800, 150.00) is worth far more than one in the middle of a range.</li>
+        <li><b>Wait for the close.</b> A candle isn't a pattern until it closes. A hammer half-way through the session can still finish as a bearish candle.</li>
+        <li><b>Plan the risk first.</b> Most patterns give a natural stop beyond the wick extreme. Size the position from that distance, not the other way round.</li>
+      </ul>
+    </aside>
+  </section>
+
+  <!-- PROGRESS -->
+  <section id="panel-progress" role="tabpanel" aria-labelledby="tab-progress" class="panel" hidden>
+    <div class="progress-head">
+      <h2>Your progress</h2>
+      <p id="prog-summary">No answers yet.</p>
+    </div>
+    <div class="table-wrap">
+      <table class="prog">
+        <thead><tr><th scope="col">Pattern</th><th scope="col">Bias</th><th scope="col" class="num">Tries</th><th scope="col">Accuracy</th><th scope="col" class="num">Mixed up with</th><th scope="col"><span class="sr">Practise</span></th></tr></thead>
+        <tbody id="prog-rows"></tbody>
+      </table>
+    </div>
+    <div class="reset-row">
+      <button type="button" class="ghost" id="prog-reset">Reset progress</button>
+      <span id="prog-confirm" hidden>Clear all saved results? <button type="button" class="danger" id="prog-reset-yes">Clear</button> <button type="button" class="link" id="prog-reset-no">Keep</button></span>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <p>Charts are generated for practice, not live market data. Candlestick patterns describe probabilities, not certainties; treat every one as a prompt to check location, trend and risk.</p>
+  </footer>
+</div>
+<!--BODY-END-->
+<script src="js/patterns.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

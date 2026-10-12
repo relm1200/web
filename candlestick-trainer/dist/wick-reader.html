@@ -1,0 +1,1830 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wick Reader</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a trading-desk workbench. Chart on the left, answer column on the
+   right; stacks to one column on phones. Pale chart-paper blue in light,
+   deep slate in dark; ultramarine accent, teal/crimson for bull/bear. */
+:root {
+  --paper: #eef2f7;
+  --panel: #fbfcfe;
+  --ink: #14213a;
+  --muted: #5a6882;
+  --line: #d2dae6;
+  --grid: #e3e9f1;
+  --accent: #2a43c4;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(42, 67, 196, 0.1);
+  --bull: #0d8566;
+  --bear: #c3313f;
+  --neutral: #8a6a12;
+  --good-soft: rgba(13, 133, 102, 0.12);
+  --bad-soft: rgba(195, 49, 63, 0.11);
+  --shade: rgba(42, 67, 196, 0.09);
+
+  --f-display: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", Georgia, serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --s-1: 0.25rem; --s-2: 0.5rem; --s-3: 0.75rem; --s-4: 1rem; --s-5: 1.5rem; --s-6: 2.25rem;
+  --r: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0c1322; --panel: #121b2e; --ink: #e5eaf4; --muted: #93a1bb; --line: #25314a; --grid: #1a2439;
+    --accent: #8fa2ff; --accent-ink: #0c1322; --accent-soft: rgba(143, 162, 255, 0.14);
+    --bull: #33c49a; --bear: #f06672; --neutral: #e0b54a;
+    --good-soft: rgba(51, 196, 154, 0.14); --bad-soft: rgba(240, 102, 114, 0.14); --shade: rgba(143, 162, 255, 0.12);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0c1322; --panel: #121b2e; --ink: #e5eaf4; --muted: #93a1bb; --line: #25314a; --grid: #1a2439;
+  --accent: #8fa2ff; --accent-ink: #0c1322; --accent-soft: rgba(143, 162, 255, 0.14);
+  --bull: #33c49a; --bear: #f06672; --neutral: #e0b54a;
+  --good-soft: rgba(51, 196, 154, 0.14); --bad-soft: rgba(240, 102, 114, 0.14); --shade: rgba(143, 162, 255, 0.12);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 15px/1.55 var(--f-body);
+}
+[hidden] { display: none !important; }
+button, select, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.app { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: var(--s-4) var(--s-6); display: grid; gap: var(--s-5); }
+
+/* masthead */
+.masthead { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: var(--s-4); border-bottom: 1px solid var(--line); padding-bottom: var(--s-3); }
+.brand { display: flex; align-items: center; gap: var(--s-3); }
+.brand-mark { color: var(--accent); display: grid; place-items: center; }
+.brand h1 { font: 800 1.7rem/1.1 var(--f-display); margin: 0; letter-spacing: 0.01em; }
+.tagline { margin: 0; color: var(--muted); font-size: 0.82rem; letter-spacing: 0.06em; text-transform: uppercase; }
+.tabs { display: flex; gap: var(--s-1); flex-wrap: wrap; }
+.tabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: var(--s-2) var(--s-3); cursor: pointer; color: var(--muted); font-weight: 500; }
+.tabs button:hover { color: var(--ink); }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+
+.panel { display: grid; gap: var(--s-4); }
+.app > *, .panel > * { min-width: 0; }
+
+/* toolbar */
+.toolbar { display: flex; flex-wrap: wrap; gap: var(--s-3) var(--s-5); align-items: end; }
+.field { display: grid; gap: var(--s-1); border: 0; margin: 0; padding: 0; }
+.field > label, .field legend { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); padding: 0; }
+.groups { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-3); align-items: center; }
+.groups legend { width: 100%; margin-bottom: var(--s-1); }
+.groups label { display: inline-flex; gap: 0.35rem; align-items: center; cursor: pointer; font-size: 0.9rem; }
+input[type="checkbox"] { accent-color: var(--accent); width: 1rem; height: 1rem; }
+select { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 0.4rem 0.6rem; }
+.note { margin: 0; color: var(--muted); font-size: 0.85rem; max-width: 52ch; }
+.focus-chip { display: inline-flex; gap: var(--s-2); align-items: center; background: var(--accent-soft); border-radius: 999px; padding: 0.3rem 0.8rem; font-size: 0.88rem; }
+
+.scoreline { display: flex; flex-wrap: wrap; gap: var(--s-5); font-size: 0.9rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.scoreline b { color: var(--ink); font-family: var(--f-mono); font-weight: 500; }
+
+/* workbench */
+.workbench { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: var(--s-5); align-items: start; }
+@media (max-width: 860px) { .workbench { grid-template-columns: minmax(0, 1fr); } }
+
+.chart-card { margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; min-width: 0; }
+.chart-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--s-2); padding: var(--s-2) var(--s-3); border-bottom: 1px solid var(--line); font-family: var(--f-mono); font-size: 0.8rem; }
+.instrument { font-weight: 500; }
+.ohlc { color: var(--muted); font-variant-numeric: tabular-nums; }
+.chart-wrap { width: 100%; }
+.chart { display: block; width: 100%; height: auto; touch-action: manipulation; }
+.chart text { font-family: var(--f-mono); font-size: 11px; fill: var(--muted); }
+.chart .gridline { stroke: var(--grid); stroke-width: 1; }
+.chart .bull { fill: var(--bull); stroke: var(--bull); }
+.chart .bear { fill: var(--bear); stroke: var(--bear); }
+.chart .shade { fill: var(--shade); }
+.chart .hover-col { fill: var(--accent-soft); }
+.chart .mark-ok { fill: var(--good-soft); stroke: var(--bull); stroke-width: 1.5; }
+.chart .mark-bad { fill: var(--bad-soft); stroke: var(--bear); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.chart .last-line { stroke: var(--accent); stroke-dasharray: 3 3; stroke-width: 1; }
+.chart .last-tag { fill: var(--accent); }
+.chart .last-tag-text { fill: var(--accent-ink); font-weight: 500; }
+.chart.pickable { cursor: crosshair; }
+
+/* answers */
+.answer-col { display: grid; gap: var(--s-3); min-width: 0; }
+.prompt { font: 600 1.35rem/1.25 var(--f-display); margin: 0; text-wrap: balance; }
+.prompt .target { color: var(--accent); }
+.hint { margin: 0; color: var(--muted); font-size: 0.88rem; }
+.options { display: grid; gap: var(--s-2); }
+.opt { display: flex; gap: var(--s-3); align-items: center; text-align: left; width: 100%; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 0.7rem 0.9rem; cursor: pointer; font-weight: 500; transition: border-color 0.12s, background 0.12s; }
+.opt:hover:not(:disabled) { border-color: var(--accent); }
+.opt:disabled { cursor: default; }
+.opt .key { font-family: var(--f-mono); font-size: 0.75rem; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; min-width: 1.5rem; text-align: center; padding: 0 0.3rem; }
+.opt.correct { border-color: var(--bull); background: var(--good-soft); }
+.opt.wrong { border-color: var(--bear); background: var(--bad-soft); }
+.opt.dim { opacity: 0.55; }
+
+.feedback { background: var(--panel); border: 1px solid var(--line); border-left-width: 4px; border-radius: var(--r); padding: var(--s-3) var(--s-4); display: grid; gap: var(--s-2); min-width: 0; }
+.feedback.ok { border-left-color: var(--bull); }
+.feedback.bad { border-left-color: var(--bear); }
+.feedback .verdict { font-weight: 600; margin: 0; }
+.feedback h3 { font: 600 1.15rem/1.2 var(--f-display); margin: 0; display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: center; }
+.feedback p { margin: 0; }
+.feedback ul { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.2rem; }
+.feedback .label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-top: var(--s-1); }
+.measure { font-family: var(--f-mono); font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.measure li { list-style: none; margin-left: -1.1rem; }
+
+.bias { font: 500 0.7rem/1 var(--f-body); text-transform: uppercase; letter-spacing: 0.08em; padding: 0.3rem 0.5rem; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.bias.bullish { color: var(--bull); }
+.bias.bearish { color: var(--bear); }
+.bias.neutral { color: var(--neutral); }
+
+button.primary { justify-self: start; background: var(--accent); color: var(--accent-ink); border: 0; border-radius: var(--r); padding: 0.65rem 1.2rem; font-weight: 600; cursor: pointer; }
+button.ghost { background: none; border: 1px solid var(--line); border-radius: var(--r); padding: 0.55rem 1rem; cursor: pointer; }
+button.ghost:hover { border-color: var(--accent); }
+button.link { background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0; text-decoration: underline; text-underline-offset: 2px; }
+button.danger { background: var(--bear); color: var(--panel); border: 0; border-radius: var(--r); padding: 0.35rem 0.8rem; cursor: pointer; font-weight: 600; }
+
+.spot-actions { display: grid; gap: var(--s-3); max-width: 760px; }
+.row { display: flex; gap: var(--s-3); flex-wrap: wrap; }
+
+/* library */
+.library-intro { display: grid; gap: var(--s-2); }
+.library-intro h2, .progress-head h2 { font: 800 1.5rem/1.2 var(--f-display); margin: 0; }
+.library-intro p, .progress-head p { margin: 0; color: var(--muted); max-width: 65ch; }
+.chips { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); }
+.chip { background: none; border: 1px solid var(--line); border-radius: 999px; padding: 0.3rem 0.8rem; cursor: pointer; font-size: 0.85rem; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: var(--s-4); }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); display: grid; grid-template-rows: auto auto 1fr auto; min-width: 0; }
+.card-art { border-bottom: 1px solid var(--line); }
+.card-art svg { display: block; width: 100%; height: auto; }
+.card-head { display: flex; justify-content: space-between; align-items: center; gap: var(--s-2); padding: var(--s-3) var(--s-4) 0; }
+.card-head h3 { font: 600 1.15rem/1.2 var(--f-display); margin: 0; }
+.card-body { padding: var(--s-2) var(--s-4); display: grid; gap: var(--s-2); align-content: start; font-size: 0.9rem; }
+.card-body ul { margin: 0; padding-left: 1.1rem; display: grid; gap: 0.15rem; }
+.card-body p { margin: 0; }
+.card-body .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.card-meta { font-size: 0.78rem; color: var(--muted); }
+.card-foot { display: flex; justify-content: space-between; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-4) var(--s-3); }
+
+.forex-notes { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: var(--s-4) var(--s-5); }
+.forex-notes h3 { font: 600 1.15rem/1.2 var(--f-display); margin: 0 0 var(--s-2); }
+.forex-notes ul { margin: 0; padding-left: 1.1rem; display: grid; gap: var(--s-2); max-width: 80ch; }
+
+/* progress */
+.progress-head { display: grid; gap: var(--s-1); }
+.table-wrap { position: relative; overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); }
+table.prog { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 0.9rem; }
+.prog th, .prog td { padding: 0.55rem 0.8rem; text-align: left; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.prog thead th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 500; }
+.prog tbody tr:last-child td { border-bottom: 0; }
+.prog .num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--f-mono); }
+.prog td.mixed { text-align: right; color: var(--muted); font-family: var(--f-body); font-size: 0.82rem; }
+.acc { display: flex; align-items: center; gap: var(--s-2); font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.acc-bar { width: 90px; height: 6px; background: var(--grid); border-radius: 3px; overflow: hidden; flex: none; }
+.acc-bar i { display: block; height: 100%; background: var(--accent); }
+.acc-bar i.low { background: var(--bear); }
+.acc-bar i.high { background: var(--bull); }
+.reset-row { display: flex; gap: var(--s-3); align-items: center; flex-wrap: wrap; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+.foot { border-top: 1px solid var(--line); padding-top: var(--s-3); color: var(--muted); font-size: 0.82rem; }
+.foot p { margin: 0; max-width: 80ch; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+</style>
+
+</head>
+<body>
+
+<div class="app">
+  <header class="masthead">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 32" width="18" height="24"><line x1="12" y1="1" x2="12" y2="31" stroke="currentColor" stroke-width="2"/><rect x="5" y="9" width="14" height="13" fill="currentColor"/></svg></span>
+      <div>
+        <h1>Wick Reader</h1>
+        <p class="tagline">Forex candlestick pattern trainer</p>
+      </div>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button role="tab" id="tab-drill" aria-controls="panel-drill" aria-selected="true">Drill</button>
+      <button role="tab" id="tab-spot" aria-controls="panel-spot" aria-selected="false">Spot</button>
+      <button role="tab" id="tab-library" aria-controls="panel-library" aria-selected="false">Library</button>
+      <button role="tab" id="tab-progress" aria-controls="panel-progress" aria-selected="false">Progress</button>
+    </nav>
+  </header>
+
+  <!-- DRILL -->
+  <section id="panel-drill" role="tabpanel" aria-labelledby="tab-drill" class="panel">
+    <div class="toolbar">
+      <div class="field">
+        <label for="drill-mode">Question</label>
+        <select id="drill-mode">
+          <option value="name">Name the pattern</option>
+          <option value="bias">Call the bias</option>
+        </select>
+      </div>
+      <fieldset class="field groups">
+        <legend>Patterns</legend>
+        <label><input type="checkbox" id="grp-single" checked> 1-candle</label>
+        <label><input type="checkbox" id="grp-double" checked> 2-candle</label>
+        <label><input type="checkbox" id="grp-triple" checked> 3-candle</label>
+      </fieldset>
+      <fieldset class="field groups">
+        <legend>Assist</legend>
+        <label><input type="checkbox" id="opt-highlight" checked> Shade pattern</label>
+        <label><input type="checkbox" id="opt-adaptive" checked> Focus weak spots</label>
+      </fieldset>
+      <div class="focus-chip" id="drill-focus" hidden>
+        Practising <strong id="drill-focus-name"></strong>
+        <button type="button" class="link" id="drill-focus-clear">Show all</button>
+      </div>
+    </div>
+
+    <div class="scoreline" aria-live="polite">
+      <span><b id="drill-score">0</b>/<span id="drill-total">0</span> correct</span>
+      <span>Streak <b id="drill-streak">0</b></span>
+      <span>Best <b id="drill-best">0</b></span>
+    </div>
+
+    <div class="workbench">
+      <figure class="chart-card">
+        <figcaption class="chart-head">
+          <span class="instrument" id="drill-instrument">EUR/USD · H4</span>
+          <span class="ohlc" id="drill-ohlc">Hover a candle for O H L C</span>
+        </figcaption>
+        <div class="chart-wrap"><svg id="drill-chart" class="chart" role="img" aria-label="Candlestick chart"></svg></div>
+      </figure>
+
+      <div class="answer-col">
+        <h2 class="prompt" id="drill-prompt">Which pattern just formed?</h2>
+        <p class="hint" id="drill-hint">The pattern ends on the last candle. Keys 1–4 answer, Enter moves on.</p>
+        <div class="options" id="drill-options"></div>
+        <div class="feedback" id="drill-feedback" hidden></div>
+        <button type="button" class="primary" id="drill-next" hidden>Next chart</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- SPOT -->
+  <section id="panel-spot" role="tabpanel" aria-labelledby="tab-spot" class="panel" hidden>
+    <div class="toolbar">
+      <fieldset class="field groups">
+        <legend>Patterns</legend>
+        <label><input type="checkbox" id="spot-single" checked> 1-candle</label>
+        <label><input type="checkbox" id="spot-double" checked> 2-candle</label>
+        <label><input type="checkbox" id="spot-triple" checked> 3-candle</label>
+      </fieldset>
+      <p class="note">Spinning tops are left out here. They appear so often in normal price action that a chart rarely has just one.</p>
+    </div>
+    <div class="scoreline" aria-live="polite">
+      <span><b id="spot-score">0</b>/<span id="spot-total">0</span> found</span>
+      <span>Streak <b id="spot-streak">0</b></span>
+    </div>
+    <h2 class="prompt">Find the <span class="target" id="spot-target">Hammer</span></h2>
+    <p class="hint">Tap or click the candle that <em>completes</em> it. The candles after it show what price did next.</p>
+    <figure class="chart-card wide">
+      <figcaption class="chart-head">
+        <span class="instrument" id="spot-instrument">EUR/USD · H4</span>
+        <span class="ohlc" id="spot-ohlc">Hover a candle for O H L C</span>
+      </figcaption>
+      <div class="chart-wrap"><svg id="spot-chart" class="chart pickable" role="img" aria-label="Candlestick chart, choose a candle"></svg></div>
+    </figure>
+    <div class="spot-actions">
+      <div class="feedback" id="spot-feedback" hidden></div>
+      <div class="row">
+        <button type="button" class="ghost" id="spot-reveal">Show me</button>
+        <button type="button" class="primary" id="spot-next" hidden>Next chart</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- LIBRARY -->
+  <section id="panel-library" role="tabpanel" aria-labelledby="tab-library" class="panel" hidden>
+    <div class="library-intro">
+      <h2>Pattern library</h2>
+      <p>The rules below are the exact ones the drills use to check every chart. Each example is drawn fresh by the same generator.</p>
+      <div class="chips" id="lib-filter" role="group" aria-label="Filter patterns">
+        <button type="button" class="chip" data-f="all" aria-pressed="true">All</button>
+        <button type="button" class="chip" data-f="single" aria-pressed="false">1-candle</button>
+        <button type="button" class="chip" data-f="double" aria-pressed="false">2-candle</button>
+        <button type="button" class="chip" data-f="triple" aria-pressed="false">3-candle</button>
+        <button type="button" class="chip" data-f="bullish" aria-pressed="false">Bullish</button>
+        <button type="button" class="chip" data-f="bearish" aria-pressed="false">Bearish</button>
+        <button type="button" class="chip" data-f="neutral" aria-pressed="false">Indecision</button>
+      </div>
+    </div>
+    <div class="cards" id="lib-cards"></div>
+    <aside class="forex-notes">
+      <h3>Reading candles on forex charts</h3>
+      <ul>
+        <li><b>Gaps are rare.</b> Spot FX trades around the clock from Sunday evening to Friday, so each candle usually opens at the previous close. Stars, piercing lines and dark clouds are judged on bodies and closes, not gaps.</li>
+        <li><b>Higher timeframes are cleaner.</b> H4 and daily candles filter out intraday noise. The daily candle most brokers use closes at 17:00 New York time.</li>
+        <li><b>Location matters more than shape.</b> A hammer at a tested support level or round number (1.0800, 150.00) is worth far more than one in the middle of a range.</li>
+        <li><b>Wait for the close.</b> A candle isn't a pattern until it closes. A hammer half-way through the session can still finish as a bearish candle.</li>
+        <li><b>Plan the risk first.</b> Most patterns give a natural stop beyond the wick extreme. Size the position from that distance, not the other way round.</li>
+      </ul>
+    </aside>
+  </section>
+
+  <!-- PROGRESS -->
+  <section id="panel-progress" role="tabpanel" aria-labelledby="tab-progress" class="panel" hidden>
+    <div class="progress-head">
+      <h2>Your progress</h2>
+      <p id="prog-summary">No answers yet.</p>
+    </div>
+    <div class="table-wrap">
+      <table class="prog">
+        <thead><tr><th scope="col">Pattern</th><th scope="col">Bias</th><th scope="col" class="num">Tries</th><th scope="col">Accuracy</th><th scope="col" class="num">Mixed up with</th><th scope="col"><span class="sr">Practise</span></th></tr></thead>
+        <tbody id="prog-rows"></tbody>
+      </table>
+    </div>
+    <div class="reset-row">
+      <button type="button" class="ghost" id="prog-reset">Reset progress</button>
+      <span id="prog-confirm" hidden>Clear all saved results? <button type="button" class="danger" id="prog-reset-yes">Clear</button> <button type="button" class="link" id="prog-reset-no">Keep</button></span>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <p>Charts are generated for practice, not live market data. Candlestick patterns describe probabilities, not certainties; treat every one as a prompt to check location, trend and risk.</p>
+  </footer>
+</div>
+
+<script>
+/*
+ * Candlestick pattern engine: definitions, rule-based detection and
+ * synthetic chart generation. Works in the browser (window.CandleLab)
+ * and in Node (module.exports) so the rules can be unit tested.
+ *
+ * Units: generation happens in "u", roughly one average candle range.
+ * Detection only uses ratios, so it is unaffected by price scaling.
+ */
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.CandleLab = api;
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  // ---------- utilities ----------
+
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  const R = (rng, a, b) => a + (b - a) * rng();
+  const pick = (rng, arr) => arr[Math.floor(rng() * arr.length)];
+
+  function mk(o, c, upper, lower) {
+    return { o, h: Math.max(o, c) + upper, l: Math.min(o, c) - lower, c };
+  }
+
+  function shape(k) {
+    const range = Math.max(k.h - k.l, 1e-12);
+    const body = Math.abs(k.c - k.o);
+    const bodyTop = Math.max(k.o, k.c);
+    const bodyBot = Math.min(k.o, k.c);
+    return {
+      range,
+      body,
+      bodyTop,
+      bodyBot,
+      upper: k.h - bodyTop,
+      lower: bodyBot - k.l,
+      bull: k.c > k.o,
+      bear: k.c < k.o,
+    };
+  }
+
+  // ---------- context: volatility and trend ----------
+
+  const ATR_LOOKBACK = 10;
+  const TREND_LOOKBACK = 6;
+  const TREND_THRESHOLD = 1.5; // net move, in average ranges
+
+  function avgRange(cs, end, n = ATR_LOOKBACK) {
+    const s = Math.max(0, end - n);
+    if (end <= s) return cs[end] ? cs[end].h - cs[end].l : 1;
+    let t = 0;
+    for (let j = s; j < end; j++) t += cs[j].h - cs[j].l;
+    return t / (end - s);
+  }
+
+  // Trend leading into the candle at `start` (the first candle of a pattern).
+  function trendInto(cs, start) {
+    const atr = avgRange(cs, start);
+    if (start < TREND_LOOKBACK) return { dir: 'flat', move: 0, atr };
+    const move = (cs[start - 1].c - cs[start - TREND_LOOKBACK].o) / atr;
+    const dir = move <= -TREND_THRESHOLD ? 'down' : move >= TREND_THRESHOLD ? 'up' : 'flat';
+    return { dir, move, atr };
+  }
+
+  // ---------- shared shape tests ----------
+
+  const isDojiBody = (s) => s.body <= 0.1 * s.range;
+  const isSmallBody = (s) => s.body > 0.1 * s.range && s.body <= 0.35 * s.range;
+  const hammerShape = (s, a) =>
+    isSmallBody(s) && s.lower >= 2 * s.body && s.lower >= 0.55 * s.range && s.upper <= 0.12 * s.range && s.range >= 0.7 * a;
+  const invertedShape = (s, a) =>
+    isSmallBody(s) && s.upper >= 2 * s.body && s.upper >= 0.55 * s.range && s.lower <= 0.12 * s.range && s.range >= 0.7 * a;
+  const isLongBody = (s, a) => s.body >= 0.6 * s.range && s.body >= 0.8 * a;
+
+  // ---------- builders (generate an idealised, randomised instance) ----------
+
+  function buildHammerLike(rng, last, inverted) {
+    const b = R(rng, 0.22, 0.38);
+    const longWick = b * R(rng, 2.4, 3.4) + 0.15;
+    const tiny = R(rng, 0, 0.05);
+    const o = last + R(rng, -0.05, 0.05);
+    const c = o + (rng() < 0.5 ? b : -b);
+    return [inverted ? mk(o, c, longWick, tiny) : mk(o, c, tiny, longWick)];
+  }
+
+  function longCandle(rng, open, dir) {
+    const b = R(rng, 1.3, 1.8);
+    return mk(open, open + dir * b, R(rng, 0.05, 0.2), R(rng, 0.05, 0.2));
+  }
+
+  // ---------- pattern catalogue ----------
+  // test(cs, i, ctx): i is the index of the LAST candle of the pattern.
+  // ctx = { atr, trend } measured before the FIRST candle of the pattern.
+
+  const PATTERNS = [
+    {
+      id: 'doji',
+      name: 'Doji',
+      group: 'single',
+      candles: 1,
+      signal: 'neutral',
+      trend: null,
+      confuse: ['spinning-top', 'dragonfly-doji', 'gravestone-doji'],
+      rules: [
+        'Open and close are almost equal (body ≤ 10% of the range)',
+        'Wicks on both sides, each at least a quarter of the range',
+      ],
+      meaning:
+        'Buyers and sellers ended the session in balance. After a strong run it warns that momentum is stalling; in a range it means little on its own.',
+      confirm: 'Treat it as a pause signal. Act only on the next candle’s close in one direction.',
+      test(cs, i, ctx) {
+        const s = shape(cs[i]);
+        return isDojiBody(s) && s.upper >= 0.25 * s.range && s.lower >= 0.25 * s.range && s.range >= 0.5 * ctx.atr;
+      },
+      build(rng, last) {
+        const o = last + R(rng, -0.05, 0.05);
+        const c = o + R(rng, -0.04, 0.04);
+        const range = R(rng, 1.0, 1.6);
+        const up = range * R(rng, 0.32, 0.62);
+        return [mk(o, c, up, range - up - Math.abs(c - o))];
+      },
+    },
+    {
+      id: 'dragonfly-doji',
+      name: 'Dragonfly Doji',
+      group: 'single',
+      candles: 1,
+      signal: 'bullish',
+      trend: 'down',
+      confuse: ['hammer', 'doji', 'gravestone-doji'],
+      rules: [
+        'Appears after a decline',
+        'Open, close and high are at nearly the same price',
+        'Long lower wick (at least 70% of the range), no real upper wick',
+      ],
+      meaning:
+        'Sellers drove price sharply lower, then buyers pushed it all the way back to the open. Rejection of lower prices at the bottom of a move.',
+      confirm: 'Look for the next candle to close above the doji. Stops typically sit below the long wick.',
+      test(cs, i, ctx) {
+        const s = shape(cs[i]);
+        return ctx.trend === 'down' && isDojiBody(s) && s.upper <= 0.1 * s.range && s.lower >= 0.7 * s.range && s.range >= 0.6 * ctx.atr;
+      },
+      build(rng, last) {
+        const o = last + R(rng, -0.04, 0.04);
+        const c = o + R(rng, -0.04, 0.04);
+        return [mk(o, c, R(rng, 0, 0.05), R(rng, 1.2, 1.9))];
+      },
+    },
+    {
+      id: 'gravestone-doji',
+      name: 'Gravestone Doji',
+      group: 'single',
+      candles: 1,
+      signal: 'bearish',
+      trend: 'up',
+      confuse: ['shooting-star', 'doji', 'dragonfly-doji'],
+      rules: [
+        'Appears after a rally',
+        'Open, close and low are at nearly the same price',
+        'Long upper wick (at least 70% of the range), no real lower wick',
+      ],
+      meaning:
+        'Buyers drove price well higher, but sellers pushed it all the way back to the open. Rejection of higher prices at the top of a move.',
+      confirm: 'Look for the next candle to close below the doji. Stops typically sit above the long wick.',
+      test(cs, i, ctx) {
+        const s = shape(cs[i]);
+        return ctx.trend === 'up' && isDojiBody(s) && s.lower <= 0.1 * s.range && s.upper >= 0.7 * s.range && s.range >= 0.6 * ctx.atr;
+      },
+      build(rng, last) {
+        const o = last + R(rng, -0.04, 0.04);
+        const c = o + R(rng, -0.04, 0.04);
+        return [mk(o, c, R(rng, 1.2, 1.9), R(rng, 0, 0.05))];
+      },
+    },
+    {
+      id: 'hammer',
+      name: 'Hammer',
+      group: 'single',
+      candles: 1,
+      signal: 'bullish',
+      trend: 'down',
+      confuse: ['hanging-man', 'inverted-hammer', 'dragonfly-doji'],
+      rules: [
+        'Appears after a decline',
+        'Small body near the top of the range (either colour)',
+        'Lower wick at least 2× the body, little or no upper wick',
+      ],
+      meaning:
+        'Sellers pushed price well lower, but buyers drove it back up near the open. Selling pressure is fading at the lows.',
+      confirm: 'Wait for a close above the hammer’s high. A common stop goes just below the hammer’s low.',
+      test(cs, i, ctx) {
+        return ctx.trend === 'down' && hammerShape(shape(cs[i]), ctx.atr);
+      },
+      build: (rng, last) => buildHammerLike(rng, last, false),
+    },
+    {
+      id: 'hanging-man',
+      name: 'Hanging Man',
+      group: 'single',
+      candles: 1,
+      signal: 'bearish',
+      trend: 'up',
+      confuse: ['hammer', 'shooting-star', 'dragonfly-doji'],
+      rules: [
+        'Appears after a rally (same shape as a hammer, opposite context)',
+        'Small body near the top of the range',
+        'Lower wick at least 2× the body, little or no upper wick',
+      ],
+      meaning:
+        'Price sold off hard within the session before recovering. In an uptrend that dip shows sellers testing the market, an early warning the rally is tiring.',
+      confirm: 'Needs a bearish close below the hanging man’s body on the next candle. Without it, the trend usually continues.',
+      test(cs, i, ctx) {
+        return ctx.trend === 'up' && hammerShape(shape(cs[i]), ctx.atr);
+      },
+      build: (rng, last) => buildHammerLike(rng, last, false),
+    },
+    {
+      id: 'inverted-hammer',
+      name: 'Inverted Hammer',
+      group: 'single',
+      candles: 1,
+      signal: 'bullish',
+      trend: 'down',
+      confuse: ['shooting-star', 'hammer', 'gravestone-doji'],
+      rules: [
+        'Appears after a decline',
+        'Small body near the bottom of the range',
+        'Upper wick at least 2× the body, little or no lower wick',
+      ],
+      meaning:
+        'Buyers attempted a push higher at the lows. They didn’t hold it, but it is the first sign of demand after a sell-off.',
+      confirm: 'Weaker than a hammer. Wait for the next candle to close above the inverted hammer’s body.',
+      test(cs, i, ctx) {
+        return ctx.trend === 'down' && invertedShape(shape(cs[i]), ctx.atr);
+      },
+      build: (rng, last) => buildHammerLike(rng, last, true),
+    },
+    {
+      id: 'shooting-star',
+      name: 'Shooting Star',
+      group: 'single',
+      candles: 1,
+      signal: 'bearish',
+      trend: 'up',
+      confuse: ['inverted-hammer', 'gravestone-doji', 'hanging-man'],
+      rules: [
+        'Appears after a rally (same shape as an inverted hammer, opposite context)',
+        'Small body near the bottom of the range',
+        'Upper wick at least 2× the body, little or no lower wick',
+      ],
+      meaning:
+        'Buyers spiked price higher, then sellers slammed it back down to the open. Strong rejection of higher prices.',
+      confirm: 'Look for the next candle to close below the shooting star’s body. Stops often go above the wick high.',
+      test(cs, i, ctx) {
+        return ctx.trend === 'up' && invertedShape(shape(cs[i]), ctx.atr);
+      },
+      build: (rng, last) => buildHammerLike(rng, last, true),
+    },
+    {
+      id: 'spinning-top',
+      name: 'Spinning Top',
+      group: 'single',
+      candles: 1,
+      signal: 'neutral',
+      trend: null,
+      confuse: ['doji', 'hammer', 'shooting-star'],
+      spot: false, // too common in ordinary price action to have one right answer
+      rules: [
+        'Small body (10–35% of the range), either colour',
+        'Wicks on both sides, each at least a quarter of the range',
+      ],
+      meaning: 'Indecision: both sides pushed price around but neither won. Often seen as a trend loses momentum.',
+      confirm: 'Not a trade signal alone. Use it as context and wait for the next decisive candle.',
+      test(cs, i) {
+        const s = shape(cs[i]);
+        return isSmallBody(s) && s.upper >= 0.25 * s.range && s.lower >= 0.25 * s.range;
+      },
+      build(rng, last) {
+        const o = last + R(rng, -0.05, 0.05);
+        const b = R(rng, 0.2, 0.3);
+        const c = o + (rng() < 0.5 ? b : -b);
+        return [mk(o, c, R(rng, 0.45, 0.75), R(rng, 0.45, 0.75))];
+      },
+    },
+    {
+      id: 'bullish-marubozu',
+      name: 'Bullish Marubozu',
+      group: 'single',
+      candles: 1,
+      signal: 'bullish',
+      trend: null,
+      confuse: ['bearish-marubozu', 'bullish-engulfing', 'three-white-soldiers'],
+      rules: [
+        'Large bullish body, much bigger than recent candles',
+        'Little or no wick on either side (body ≥ 90% of the range)',
+      ],
+      meaning: 'Buyers controlled the session from open to close. Shows strong momentum, often at a breakout.',
+      confirm: 'Continuation is more likely when it breaks a level. Chasing after a very large one carries pullback risk.',
+      test(cs, i, ctx) {
+        const s = shape(cs[i]);
+        return s.bull && s.body >= 0.9 * s.range && s.range >= 1.3 * ctx.atr;
+      },
+      build(rng, last) {
+        const o = last + R(rng, -0.03, 0.03);
+        return [mk(o, o + R(rng, 1.7, 2.3), R(rng, 0, 0.05), R(rng, 0, 0.05))];
+      },
+    },
+    {
+      id: 'bearish-marubozu',
+      name: 'Bearish Marubozu',
+      group: 'single',
+      candles: 1,
+      signal: 'bearish',
+      trend: null,
+      confuse: ['bullish-marubozu', 'bearish-engulfing', 'three-black-crows'],
+      rules: [
+        'Large bearish body, much bigger than recent candles',
+        'Little or no wick on either side (body ≥ 90% of the range)',
+      ],
+      meaning: 'Sellers controlled the session from open to close. Shows strong downside momentum.',
+      confirm: 'Continuation is more likely when it breaks support. Late entries risk a pullback.',
+      test(cs, i, ctx) {
+        const s = shape(cs[i]);
+        return s.bear && s.body >= 0.9 * s.range && s.range >= 1.3 * ctx.atr;
+      },
+      build(rng, last) {
+        const o = last + R(rng, -0.03, 0.03);
+        return [mk(o, o - R(rng, 1.7, 2.3), R(rng, 0, 0.05), R(rng, 0, 0.05))];
+      },
+    },
+    {
+      id: 'bullish-engulfing',
+      name: 'Bullish Engulfing',
+      group: 'double',
+      candles: 2,
+      signal: 'bullish',
+      trend: 'down',
+      confuse: ['piercing-line', 'bullish-harami', 'tweezer-bottom'],
+      rules: [
+        'Appears after a decline',
+        'Candle 1 is bearish',
+        'Candle 2 is bullish and its body covers all of candle 1’s body',
+      ],
+      meaning: 'Buyers fully reversed the prior session’s selling. One of the more reliable two-candle reversal signals.',
+      confirm: 'Stronger at support or a round number. A common stop goes below the low of the two candles.',
+      test(cs, i, ctx) {
+        const p = shape(cs[i - 1]);
+        const s = shape(cs[i]);
+        return (
+          ctx.trend === 'down' && p.bear && p.body >= 0.3 * ctx.atr && s.bull &&
+          cs[i].o <= cs[i - 1].c && cs[i].c >= cs[i - 1].o && s.body > 1.1 * p.body
+        );
+      },
+      build(rng, last) {
+        const p = mk(last, last - R(rng, 0.45, 0.75), R(rng, 0.05, 0.2), R(rng, 0.03, 0.1));
+        const o = p.c - R(rng, 0, 0.05);
+        const s = mk(o, p.o + R(rng, 0.2, 0.5), R(rng, 0.12, 0.25), R(rng, 0.25, 0.4));
+        return [p, s];
+      },
+    },
+    {
+      id: 'bearish-engulfing',
+      name: 'Bearish Engulfing',
+      group: 'double',
+      candles: 2,
+      signal: 'bearish',
+      trend: 'up',
+      confuse: ['dark-cloud-cover', 'bearish-harami', 'tweezer-top'],
+      rules: [
+        'Appears after a rally',
+        'Candle 1 is bullish',
+        'Candle 2 is bearish and its body covers all of candle 1’s body',
+      ],
+      meaning: 'Sellers fully reversed the prior session’s buying. One of the more reliable two-candle reversal signals.',
+      confirm: 'Stronger at resistance. A common stop goes above the high of the two candles.',
+      test(cs, i, ctx) {
+        const p = shape(cs[i - 1]);
+        const s = shape(cs[i]);
+        return (
+          ctx.trend === 'up' && p.bull && p.body >= 0.3 * ctx.atr && s.bear &&
+          cs[i].o >= cs[i - 1].c && cs[i].c <= cs[i - 1].o && s.body > 1.1 * p.body
+        );
+      },
+      build(rng, last) {
+        const p = mk(last, last + R(rng, 0.45, 0.75), R(rng, 0.03, 0.1), R(rng, 0.05, 0.2));
+        const o = p.c + R(rng, 0, 0.05);
+        const s = mk(o, p.o - R(rng, 0.2, 0.5), R(rng, 0.25, 0.4), R(rng, 0.12, 0.25));
+        return [p, s];
+      },
+    },
+    {
+      id: 'bullish-harami',
+      name: 'Bullish Harami',
+      group: 'double',
+      candles: 2,
+      signal: 'bullish',
+      trend: 'down',
+      confuse: ['bullish-engulfing', 'bearish-harami', 'morning-star'],
+      rules: [
+        'Appears after a decline',
+        'Candle 1 is a long bearish candle',
+        'Candle 2 is a small bullish body sitting inside candle 1’s body',
+      ],
+      meaning: '“Harami” means pregnant. The selling stalled and the market went quiet inside the prior range, a first hint of reversal.',
+      confirm: 'Weaker than engulfing. Wait for a close above candle 1’s open or a nearby resistance level.',
+      test(cs, i, ctx) {
+        const p = shape(cs[i - 1]);
+        const s = shape(cs[i]);
+        return (
+          ctx.trend === 'down' && p.bear && isLongBody(p, ctx.atr) && s.bull &&
+          s.bodyTop <= cs[i - 1].o && s.bodyBot >= cs[i - 1].c && s.body <= 0.5 * p.body
+        );
+      },
+      build(rng, last) {
+        const p = longCandle(rng, last, -1);
+        const pb = p.o - p.c;
+        const o = p.c + pb * R(rng, 0.15, 0.3);
+        const s = mk(o, o + pb * R(rng, 0.2, 0.38), R(rng, 0.05, 0.15), R(rng, 0.05, 0.15));
+        return [p, s];
+      },
+    },
+    {
+      id: 'bearish-harami',
+      name: 'Bearish Harami',
+      group: 'double',
+      candles: 2,
+      signal: 'bearish',
+      trend: 'up',
+      confuse: ['bearish-engulfing', 'bullish-harami', 'evening-star'],
+      rules: [
+        'Appears after a rally',
+        'Candle 1 is a long bullish candle',
+        'Candle 2 is a small bearish body sitting inside candle 1’s body',
+      ],
+      meaning: 'The buying stalled and the market went quiet inside the prior range, a first hint the rally is done.',
+      confirm: 'Weaker than engulfing. Wait for a close below candle 1’s open or a nearby support level.',
+      test(cs, i, ctx) {
+        const p = shape(cs[i - 1]);
+        const s = shape(cs[i]);
+        return (
+          ctx.trend === 'up' && p.bull && isLongBody(p, ctx.atr) && s.bear &&
+          s.bodyTop <= cs[i - 1].c && s.bodyBot >= cs[i - 1].o && s.body <= 0.5 * p.body
+        );
+      },
+      build(rng, last) {
+        const p = longCandle(rng, last, 1);
+        const pb = p.c - p.o;
+        const o = p.c - pb * R(rng, 0.15, 0.3);
+        const s = mk(o, o - pb * R(rng, 0.2, 0.38), R(rng, 0.05, 0.15), R(rng, 0.05, 0.15));
+        return [p, s];
+      },
+    },
+    {
+      id: 'piercing-line',
+      name: 'Piercing Line',
+      group: 'double',
+      candles: 2,
+      signal: 'bullish',
+      trend: 'down',
+      confuse: ['bullish-engulfing', 'dark-cloud-cover', 'bullish-harami'],
+      rules: [
+        'Appears after a decline',
+        'Candle 1 is a long bearish candle',
+        'Candle 2 opens at or below candle 1’s close and closes above the midpoint of candle 1’s body, but not above its open',
+      ],
+      meaning: 'Buyers recovered more than half of the prior session’s losses. A reversal attempt that falls just short of engulfing.',
+      confirm: 'In forex, opening gaps are rare, so judge it on how deep the close pierces. Confirm with a higher close next.',
+      test(cs, i, ctx) {
+        const p = shape(cs[i - 1]);
+        const s = shape(cs[i]);
+        const a = cs[i - 1];
+        return (
+          ctx.trend === 'down' && p.bear && isLongBody(p, ctx.atr) && s.bull &&
+          cs[i].o <= a.c && cs[i].c > a.c + 0.5 * p.body && cs[i].c < a.o
+        );
+      },
+      build(rng, last) {
+        const p = longCandle(rng, last, -1);
+        const pb = p.o - p.c;
+        const o = p.c - R(rng, 0, 0.08);
+        const s = mk(o, p.c + pb * R(rng, 0.58, 0.85), R(rng, 0.12, 0.25), R(rng, 0.3, 0.45));
+        return [p, s];
+      },
+    },
+    {
+      id: 'dark-cloud-cover',
+      name: 'Dark Cloud Cover',
+      group: 'double',
+      candles: 2,
+      signal: 'bearish',
+      trend: 'up',
+      confuse: ['bearish-engulfing', 'piercing-line', 'bearish-harami'],
+      rules: [
+        'Appears after a rally',
+        'Candle 1 is a long bullish candle',
+        'Candle 2 opens at or above candle 1’s close and closes below the midpoint of candle 1’s body, but not below its open',
+      ],
+      meaning: 'Sellers erased more than half of the prior session’s gains. A reversal attempt that falls just short of engulfing.',
+      confirm: 'Judge it on how deep the close cuts into candle 1. Confirm with a lower close next.',
+      test(cs, i, ctx) {
+        const p = shape(cs[i - 1]);
+        const s = shape(cs[i]);
+        const a = cs[i - 1];
+        return (
+          ctx.trend === 'up' && p.bull && isLongBody(p, ctx.atr) && s.bear &&
+          cs[i].o >= a.c && cs[i].c < a.c - 0.5 * p.body && cs[i].c > a.o
+        );
+      },
+      build(rng, last) {
+        const p = longCandle(rng, last, 1);
+        const pb = p.c - p.o;
+        const o = p.c + R(rng, 0, 0.08);
+        const s = mk(o, p.c - pb * R(rng, 0.58, 0.85), R(rng, 0.3, 0.45), R(rng, 0.12, 0.25));
+        return [p, s];
+      },
+    },
+    {
+      id: 'tweezer-bottom',
+      name: 'Tweezer Bottom',
+      group: 'double',
+      candles: 2,
+      signal: 'bullish',
+      trend: 'down',
+      confuse: ['tweezer-top', 'bullish-engulfing', 'piercing-line'],
+      rules: [
+        'Appears after a decline',
+        'Candle 1 is bearish, candle 2 is bullish',
+        'Both candles make the same low (within 5% of an average range)',
+      ],
+      meaning: 'Price tested the same low twice and was rejected both times. That level is acting as support.',
+      confirm: 'A close above candle 1’s open confirms it. A stop just under the shared low is common.',
+      test(cs, i, ctx) {
+        const p = shape(cs[i - 1]);
+        const s = shape(cs[i]);
+        return (
+          ctx.trend === 'down' && p.bear && s.bull && p.body >= 0.3 * ctx.atr && s.body >= 0.2 * ctx.atr &&
+          Math.abs(cs[i - 1].l - cs[i].l) <= 0.05 * ctx.atr
+        );
+      },
+      build(rng, last) {
+        const p = mk(last, last - R(rng, 0.7, 1.0), R(rng, 0.03, 0.12), R(rng, 0.3, 0.5));
+        const pb = p.o - p.c;
+        const o = p.c - R(rng, 0.01, 0.05);
+        const c = o + pb * R(rng, 0.35, 0.45);
+        const s = { o, c, h: c + R(rng, 0.03, 0.15), l: p.l + R(rng, -0.02, 0.02) };
+        return [p, s];
+      },
+    },
+    {
+      id: 'tweezer-top',
+      name: 'Tweezer Top',
+      group: 'double',
+      candles: 2,
+      signal: 'bearish',
+      trend: 'up',
+      confuse: ['tweezer-bottom', 'bearish-engulfing', 'dark-cloud-cover'],
+      rules: [
+        'Appears after a rally',
+        'Candle 1 is bullish, candle 2 is bearish',
+        'Both candles make the same high (within 5% of an average range)',
+      ],
+      meaning: 'Price tested the same high twice and was rejected both times. That level is acting as resistance.',
+      confirm: 'A close below candle 1’s open confirms it. A stop just above the shared high is common.',
+      test(cs, i, ctx) {
+        const p = shape(cs[i - 1]);
+        const s = shape(cs[i]);
+        return (
+          ctx.trend === 'up' && p.bull && s.bear && p.body >= 0.3 * ctx.atr && s.body >= 0.2 * ctx.atr &&
+          Math.abs(cs[i - 1].h - cs[i].h) <= 0.05 * ctx.atr
+        );
+      },
+      build(rng, last) {
+        const p = mk(last, last + R(rng, 0.7, 1.0), R(rng, 0.3, 0.5), R(rng, 0.03, 0.12));
+        const pb = p.c - p.o;
+        const o = p.c + R(rng, 0.01, 0.05);
+        const c = o - pb * R(rng, 0.35, 0.45);
+        const s = { o, c, h: p.h + R(rng, -0.02, 0.02), l: c - R(rng, 0.03, 0.15) };
+        return [p, s];
+      },
+    },
+    {
+      id: 'morning-star',
+      name: 'Morning Star',
+      group: 'triple',
+      candles: 3,
+      signal: 'bullish',
+      trend: 'down',
+      confuse: ['evening-star', 'bullish-harami', 'three-white-soldiers'],
+      rules: [
+        'Appears after a decline',
+        'Candle 1 is a long bearish candle',
+        'Candle 2 has a small body at or below candle 1’s close',
+        'Candle 3 is bullish and closes above the midpoint of candle 1’s body',
+      ],
+      meaning: 'Selling, then hesitation, then a strong buying session. The three-step sequence shows control passing from sellers to buyers.',
+      confirm: 'Forex rarely gaps, so the small middle body just needs to sit at the low. A stop below candle 2’s low is common.',
+      test(cs, i, ctx) {
+        const q = shape(cs[i - 2]);
+        const p = shape(cs[i - 1]);
+        const s = shape(cs[i]);
+        const a = cs[i - 2];
+        return (
+          ctx.trend === 'down' && q.bear && isLongBody(q, ctx.atr) && p.body <= 0.3 * q.body &&
+          p.bodyTop <= a.c + 0.1 * q.body && s.bull && cs[i].c >= a.c + 0.5 * q.body
+        );
+      },
+      build(rng, last) {
+        const q = longCandle(rng, last, -1);
+        const qb = q.o - q.c;
+        const po = q.c - R(rng, 0.05, 0.15);
+        const pc = po + R(rng, -0.12, 0.12);
+        const p = mk(po, pc, R(rng, 0.1, 0.3), R(rng, 0.1, 0.3));
+        const so = pc + R(rng, -0.03, 0.03);
+        const s = mk(so, q.c + qb * R(rng, 0.6, 0.9), R(rng, 0.15, 0.28), R(rng, 0.12, 0.25));
+        return [q, p, s];
+      },
+    },
+    {
+      id: 'evening-star',
+      name: 'Evening Star',
+      group: 'triple',
+      candles: 3,
+      signal: 'bearish',
+      trend: 'up',
+      confuse: ['morning-star', 'bearish-harami', 'three-black-crows'],
+      rules: [
+        'Appears after a rally',
+        'Candle 1 is a long bullish candle',
+        'Candle 2 has a small body at or above candle 1’s close',
+        'Candle 3 is bearish and closes below the midpoint of candle 1’s body',
+      ],
+      meaning: 'Buying, then hesitation, then a strong selling session. Control passes from buyers to sellers at the top.',
+      confirm: 'The small middle body just needs to sit at the high. A stop above candle 2’s high is common.',
+      test(cs, i, ctx) {
+        const q = shape(cs[i - 2]);
+        const p = shape(cs[i - 1]);
+        const s = shape(cs[i]);
+        const a = cs[i - 2];
+        return (
+          ctx.trend === 'up' && q.bull && isLongBody(q, ctx.atr) && p.body <= 0.3 * q.body &&
+          p.bodyBot >= a.c - 0.1 * q.body && s.bear && cs[i].c <= a.c - 0.5 * q.body
+        );
+      },
+      build(rng, last) {
+        const q = longCandle(rng, last, 1);
+        const qb = q.c - q.o;
+        const po = q.c + R(rng, 0.05, 0.15);
+        const pc = po + R(rng, -0.12, 0.12);
+        const p = mk(po, pc, R(rng, 0.1, 0.3), R(rng, 0.1, 0.3));
+        const so = pc + R(rng, -0.03, 0.03);
+        const s = mk(so, q.c - qb * R(rng, 0.6, 0.9), R(rng, 0.12, 0.25), R(rng, 0.15, 0.28));
+        return [q, p, s];
+      },
+    },
+    {
+      id: 'three-white-soldiers',
+      name: 'Three White Soldiers',
+      group: 'triple',
+      candles: 3,
+      signal: 'bullish',
+      trend: 'down',
+      confuse: ['three-black-crows', 'morning-star', 'bullish-marubozu'],
+      rules: [
+        'Appears after a decline or a base',
+        'Three bullish candles in a row with solid bodies (≥ 60% of range)',
+        'Each opens inside the previous body and closes higher',
+        'Small upper wicks: buyers held the highs',
+      ],
+      meaning: 'Three sessions of steady, committed buying. A strong reversal that often starts a new up-leg.',
+      confirm: 'After three big candles price is often stretched. Many traders wait for a shallow pullback to enter.',
+      test(cs, i, ctx) {
+        if (ctx.trend !== 'down') return false;
+        for (let j = i - 2; j <= i; j++) {
+          const s = shape(cs[j]);
+          if (!s.bull || s.body < 0.6 * s.range || s.body < 0.6 * ctx.atr || s.upper > 0.25 * s.range) return false;
+          if (j > i - 2) {
+            const prev = cs[j - 1];
+            if (cs[j].c <= prev.c || cs[j].o < prev.o || cs[j].o > prev.c) return false;
+          }
+        }
+        return true;
+      },
+      build(rng, last) {
+        const out = [];
+        let o = last;
+        for (let k = 0; k < 3; k++) {
+          const b = R(rng, 0.95, 1.3);
+          const k1 = mk(o, o + b, R(rng, 0.1, 0.22), R(rng, 0.1, 0.22));
+          out.push(k1);
+          o = k1.c - b * R(rng, 0, 0.25);
+        }
+        return out;
+      },
+    },
+    {
+      id: 'three-black-crows',
+      name: 'Three Black Crows',
+      group: 'triple',
+      candles: 3,
+      signal: 'bearish',
+      trend: 'up',
+      confuse: ['three-white-soldiers', 'evening-star', 'bearish-marubozu'],
+      rules: [
+        'Appears after a rally',
+        'Three bearish candles in a row with solid bodies (≥ 60% of range)',
+        'Each opens inside the previous body and closes lower',
+        'Small lower wicks: sellers held the lows',
+      ],
+      meaning: 'Three sessions of steady, committed selling. A strong reversal that often starts a new down-leg.',
+      confirm: 'Price is often stretched after three big candles. Many traders wait for a weak bounce to enter.',
+      test(cs, i, ctx) {
+        if (ctx.trend !== 'up') return false;
+        for (let j = i - 2; j <= i; j++) {
+          const s = shape(cs[j]);
+          if (!s.bear || s.body < 0.6 * s.range || s.body < 0.6 * ctx.atr || s.lower > 0.25 * s.range) return false;
+          if (j > i - 2) {
+            const prev = cs[j - 1];
+            if (cs[j].c >= prev.c || cs[j].o > prev.o || cs[j].o < prev.c) return false;
+          }
+        }
+        return true;
+      },
+      build(rng, last) {
+        const out = [];
+        let o = last;
+        for (let k = 0; k < 3; k++) {
+          const b = R(rng, 0.95, 1.3);
+          const k1 = mk(o, o - b, R(rng, 0.1, 0.22), R(rng, 0.1, 0.22));
+          out.push(k1);
+          o = k1.c + b * R(rng, 0, 0.25);
+        }
+        return out;
+      },
+    },
+  ];
+
+  const BY_ID = Object.fromEntries(PATTERNS.map((p) => [p.id, p]));
+
+  // ---------- detection ----------
+
+  function contextFor(cs, i, def) {
+    const start = i - def.candles + 1;
+    const t = trendInto(cs, start);
+    return { atr: t.atr, trend: t.dir, move: t.move, start };
+  }
+
+  function matches(cs, i, id) {
+    const def = BY_ID[id];
+    if (!def || i - def.candles + 1 < 1 || i >= cs.length) return false;
+    return def.test(cs, i, contextFor(cs, i, def));
+  }
+
+  // All pattern ids whose final candle is at index i.
+  function detectAt(cs, i) {
+    return PATTERNS.filter((p) => matches(cs, i, p.id)).map((p) => p.id);
+  }
+
+  // ---------- markets ----------
+
+  const PAIRS = [
+    { symbol: 'EUR/USD', base: 1.085, dp: 5, pip: 0.0001 },
+    { symbol: 'GBP/USD', base: 1.272, dp: 5, pip: 0.0001 },
+    { symbol: 'AUD/USD', base: 0.662, dp: 5, pip: 0.0001 },
+    { symbol: 'USD/CAD', base: 1.364, dp: 5, pip: 0.0001 },
+    { symbol: 'USD/CHF', base: 0.884, dp: 5, pip: 0.0001 },
+    { symbol: 'USD/JPY', base: 149.6, dp: 3, pip: 0.01 },
+    { symbol: 'EUR/JPY', base: 162.3, dp: 3, pip: 0.01 },
+  ];
+  // Typical average candle range in pips per timeframe (major pairs).
+  const TIMEFRAMES = [
+    { tf: 'H1', atrPips: 14, minutes: 60 },
+    { tf: 'H4', atrPips: 32, minutes: 240 },
+    { tf: 'D1', atrPips: 75, minutes: 1440 },
+  ];
+
+  // ---------- synthetic chart generation ----------
+
+  function series(rng, start, n, drift) {
+    const out = [];
+    let last = start;
+    for (let k = 0; k < n; k++) {
+      const pull = drift === 0 ? -0.12 * (last - start) : 0;
+      const o = last + R(rng, -0.03, 0.03);
+      const c = o + drift + pull + R(rng, -0.55, 0.55);
+      out.push(mk(o, c, R(rng, 0.08, 0.4), R(rng, 0.08, 0.4)));
+      last = c;
+    }
+    return out;
+  }
+
+  const DRIFT = { up: 0.45, down: -0.45, flat: 0 };
+
+  function toMarket(rng, raw) {
+    const pair = pick(rng, PAIRS);
+    const tf = pick(rng, TIMEFRAMES);
+    const scale = tf.atrPips * pair.pip;
+    const base = pair.base * (1 + R(rng, -0.015, 0.015));
+    const f = 10 ** pair.dp;
+    const round = (x) => Math.round((base + x * scale) * f) / f;
+    const candles = raw.map((k) => ({ o: round(k.o), h: round(k.h), l: round(k.l), c: round(k.c) }));
+    return { pair, tf, candles };
+  }
+
+  function trendFor(rng, def) {
+    return def.trend || pick(rng, ['up', 'down', 'flat']);
+  }
+
+  // Chart that ends exactly on the target pattern (Drill mode).
+  function generateDrill(id, rng, opts = {}) {
+    const def = BY_ID[id];
+    if (!def) throw new Error('Unknown pattern: ' + id);
+    const length = opts.length || 28;
+    for (let attempt = 0; attempt < 400; attempt++) {
+      const trend = trendFor(rng, def);
+      const nTrend = 9;
+      const filler = series(rng, 0, Math.max(3, length - nTrend - def.candles), 0);
+      const t = series(rng, filler[filler.length - 1].c, nTrend, DRIFT[trend]);
+      const pat = def.build(rng, t[t.length - 1].c);
+      const m = toMarket(rng, filler.concat(t, pat));
+      const i = m.candles.length - 1;
+      if (matches(m.candles, i, id)) {
+        return { ...m, id, index: i, start: i - def.candles + 1, matches: detectAt(m.candles, i), attempts: attempt + 1 };
+      }
+    }
+    throw new Error('Could not generate pattern: ' + id);
+  }
+
+  // Chart with the target pattern somewhere in the middle, followed by a few
+  // candles of aftermath, and nowhere else (Spot mode).
+  function generateSpot(id, rng, opts = {}) {
+    const def = BY_ID[id];
+    if (!def) throw new Error('Unknown pattern: ' + id);
+    for (let attempt = 0; attempt < 600; attempt++) {
+      const trend = trendFor(rng, def);
+      const nFill = 8 + Math.floor(rng() * 9);
+      const nAfter = 4 + Math.floor(rng() * 5);
+      const filler = series(rng, 0, nFill, 0);
+      const t = series(rng, filler[filler.length - 1].c, 8, DRIFT[trend]);
+      const pat = def.build(rng, t[t.length - 1].c);
+      const dir = def.signal === 'bullish' ? 0.35 : def.signal === 'bearish' ? -0.35 : 0;
+      const after = series(rng, pat[pat.length - 1].c, nAfter, dir);
+      const m = toMarket(rng, filler.concat(t, pat, after));
+      const i = filler.length + t.length + pat.length - 1;
+      if (!matches(m.candles, i, id)) continue;
+      let unique = true;
+      for (let j = 1; j < m.candles.length && unique; j++) if (j !== i && matches(m.candles, j, id)) unique = false;
+      if (!unique) continue;
+      return { ...m, id, index: i, start: i - def.candles + 1, attempts: attempt + 1 };
+    }
+    throw new Error('Could not generate spot chart: ' + id);
+  }
+
+  // Measured facts about a pattern instance, for feedback.
+  function explain(cs, i, id) {
+    const def = BY_ID[id];
+    const ctx = contextFor(cs, i, def);
+    const candles = [];
+    for (let j = ctx.start; j <= i; j++) {
+      const s = shape(cs[j]);
+      candles.push({
+        index: j,
+        colour: s.bull ? 'bullish' : s.bear ? 'bearish' : 'flat',
+        bodyPct: Math.round((100 * s.body) / s.range),
+        upperPct: Math.round((100 * s.upper) / s.range),
+        lowerPct: Math.round((100 * s.lower) / s.range),
+        rangeAtr: +(s.range / ctx.atr).toFixed(2),
+      });
+    }
+    return { trend: ctx.trend, move: +ctx.move.toFixed(2), candles };
+  }
+
+  return {
+    PATTERNS,
+    BY_ID,
+    PAIRS,
+    TIMEFRAMES,
+    mulberry32,
+    shape,
+    avgRange,
+    trendInto,
+    matches,
+    detectAt,
+    generateDrill,
+    generateSpot,
+    explain,
+    _internal: { series, mk, TREND_LOOKBACK, TREND_THRESHOLD },
+  };
+});
+
+/* Wick Reader UI: drill, spot, library and progress views. */
+(function () {
+  'use strict';
+  const L = window.CandleLab;
+  const { PATTERNS, BY_ID } = L;
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const $ = (id) => document.getElementById(id);
+  const rng = L.mulberry32((Date.now() ^ (Math.random() * 1e9)) >>> 0);
+  const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const BIAS_LABEL = { bullish: 'Bullish', bearish: 'Bearish', neutral: 'Indecision' };
+  const TREND_LABEL = { down: 'after a decline', up: 'after a rally', null: 'in any trend' };
+
+  // ---------- persistence (per-viewer convenience only) ----------
+  const KEY = 'wick-reader.v1';
+  function load() {
+    try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; }
+  }
+  const saved = load();
+  const stats = saved.stats || {};
+  const prefs = Object.assign(
+    { mode: 'name', groups: { single: true, double: true, triple: true }, spotGroups: { single: true, double: true, triple: true }, highlight: true, adaptive: true, tab: 'drill', best: 0 },
+    saved.prefs || {}
+  );
+  function persist() {
+    try { localStorage.setItem(KEY, JSON.stringify({ stats, prefs })); } catch (e) { /* storage unavailable */ }
+  }
+  function stat(id) {
+    return (stats[id] = stats[id] || { a: 0, c: 0, sa: 0, sc: 0, mix: {} });
+  }
+
+  // ---------- chart rendering ----------
+  function el(name, attrs, parent) {
+    const n = document.createElementNS(SVGNS, name);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+
+  function niceStep(raw) {
+    const p = 10 ** Math.floor(Math.log10(raw));
+    for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= raw) return m * p;
+    return 10 * p;
+  }
+
+  const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // Candle open times, skipping the FX weekend, ending in the most recent full week.
+  function candleTimes(n, minutes) {
+    const out = [];
+    let t = Date.UTC(2026, 9, 9, 21 - (minutes >= 1440 ? 21 : minutes / 60), 0);
+    while (out.length < n) {
+      const d = new Date(t);
+      const wd = d.getUTCDay();
+      if (wd !== 0 && wd !== 6) out.unshift(d);
+      t -= minutes * 60000;
+    }
+    return out;
+  }
+  function timeLabel(d, minutes) {
+    if (minutes >= 1440) return MONTHS[d.getUTCMonth()] + ' ' + d.getUTCDate();
+    return DAYS[d.getUTCDay()] + ' ' + String(d.getUTCHours()).padStart(2, '0') + ':00';
+  }
+
+  function renderChart(svg, chart, opts = {}) {
+    const cs = chart.candles;
+    const compact = !!opts.compact;
+    const measured = Math.round(svg.getBoundingClientRect().width);
+    const W = opts.width || (measured ? Math.max(300, measured) : 760);
+    const H = opts.height || (W < 600 ? 320 : 360);
+    if (!compact) svg._render = [chart, opts];
+    const pad = compact ? { l: 8, r: 8, t: 10, b: 10 } : { l: 8, r: 72, t: 14, b: 26 };
+    const pw = W - pad.l - pad.r;
+    const ph = H - pad.t - pad.b;
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+    let lo = Infinity, hi = -Infinity;
+    for (const k of cs) { lo = Math.min(lo, k.l); hi = Math.max(hi, k.h); }
+    const span = hi - lo || 1;
+    lo -= span * 0.06; hi += span * 0.06;
+    const y = (p) => pad.t + ((hi - p) / (hi - lo)) * ph;
+    const slot = pw / cs.length;
+    const x = (i) => pad.l + slot * (i + 0.5);
+    const bw = Math.max(2, slot * 0.62);
+    const dp = chart.pair ? chart.pair.dp : 5;
+
+    // shading for the pattern
+    if (opts.shade) {
+      const [s, e] = opts.shade;
+      el('rect', { class: 'shade', x: pad.l + slot * s, y: pad.t, width: slot * (e - s + 1), height: ph, rx: 3 }, svg);
+    }
+
+    if (!compact) {
+      const step = niceStep((hi - lo) / 5);
+      const tagY = y(cs[cs.length - 1].c);
+      for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) {
+        const yy = y(v);
+        el('line', { class: 'gridline', x1: pad.l, x2: pad.l + pw, y1: yy, y2: yy }, svg);
+        if (opts.lastTag !== false && Math.abs(yy - tagY) < 16) continue; // keep clear of the price tag
+        const t = el('text', { x: W - pad.r + 6, y: yy + 4 }, svg);
+        t.textContent = v.toFixed(dp);
+      }
+      const times = candleTimes(cs.length, chart.tf.minutes);
+      const every = Math.max(1, Math.round(cs.length / Math.max(2, Math.floor(pw / 110))));
+      for (let i = cs.length - 1; i >= 0; i -= every) {
+        const t = el('text', { x: x(i), y: H - 8, 'text-anchor': 'middle' }, svg);
+        t.textContent = timeLabel(times[i], chart.tf.minutes);
+      }
+    }
+
+    const hover = el('rect', { class: 'hover-col', x: 0, y: pad.t, width: slot, height: ph, visibility: 'hidden' }, svg);
+    const marks = el('g', {}, svg);
+    for (const m of opts.marks || []) {
+      const [s, e] = m.range;
+      el('rect', { class: m.cls, x: pad.l + slot * s + 1, y: pad.t + 1, width: slot * (e - s + 1) - 2, height: ph - 2, rx: 4 }, marks);
+    }
+
+    cs.forEach((k, i) => {
+      const cls = k.c >= k.o ? 'bull' : 'bear';
+      el('line', { class: cls, x1: x(i), x2: x(i), y1: y(k.h), y2: y(k.l), 'stroke-width': compact ? 1.5 : 1.2 }, svg);
+      const top = y(Math.max(k.o, k.c));
+      const h = Math.max(1, Math.abs(y(k.o) - y(k.c)));
+      el('rect', { class: cls, x: x(i) - bw / 2, y: top, width: bw, height: h, 'stroke-width': 0 }, svg);
+    });
+
+    if (!compact && opts.lastTag !== false) {
+      const last = cs[cs.length - 1].c;
+      const yy = y(last);
+      el('line', { class: 'last-line', x1: pad.l, x2: W - pad.r, y1: yy, y2: yy }, svg);
+      el('rect', { class: 'last-tag', x: W - pad.r + 2, y: yy - 9, width: pad.r - 4, height: 18, rx: 3 }, svg);
+      const t = el('text', { class: 'last-tag-text', x: W - pad.r + 6, y: yy + 4 }, svg);
+      t.textContent = last.toFixed(dp);
+    }
+
+    if (compact) return;
+
+    // hover / pick interaction
+    const ohlcEl = opts.ohlcEl;
+    let cur = -1;
+    const show = (i) => {
+      cur = i;
+      if (i < 0) { hover.setAttribute('visibility', 'hidden'); if (ohlcEl) ohlcEl.textContent = 'Hover a candle for O H L C'; return; }
+      hover.setAttribute('x', pad.l + slot * i);
+      hover.setAttribute('visibility', 'visible');
+      const k = cs[i];
+      const pips = Math.round((k.h - k.l) / chart.pair.pip);
+      if (ohlcEl) ohlcEl.textContent = `O ${k.o.toFixed(dp)}  H ${k.h.toFixed(dp)}  L ${k.l.toFixed(dp)}  C ${k.c.toFixed(dp)}  ${pips}p`;
+    };
+    const idxFrom = (ev) => {
+      const pt = svg.createSVGPoint();
+      pt.x = ev.clientX; pt.y = ev.clientY;
+      const m = svg.getScreenCTM();
+      if (!m) return -1;
+      const p = pt.matrixTransform(m.inverse());
+      const i = Math.floor((p.x - pad.l) / slot);
+      return i >= 0 && i < cs.length ? i : -1;
+    };
+    svg.onpointermove = (ev) => show(idxFrom(ev));
+    svg.onpointerleave = () => show(-1);
+    if (opts.onPick) {
+      svg.setAttribute('tabindex', '0');
+      svg.onclick = (ev) => { const i = idxFrom(ev); if (i >= 0) opts.onPick(i); };
+      svg.onkeydown = (ev) => {
+        if (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') {
+          ev.preventDefault();
+          const d = ev.key === 'ArrowLeft' ? -1 : 1;
+          show(Math.min(cs.length - 1, Math.max(0, (cur < 0 ? cs.length : cur) + d)));
+        } else if ((ev.key === 'Enter' || ev.key === ' ') && cur >= 0) {
+          ev.preventDefault();
+          opts.onPick(cur);
+        }
+      };
+    } else {
+      svg.removeAttribute('tabindex');
+      svg.onclick = null;
+      svg.onkeydown = null;
+    }
+  }
+
+  // ---------- shared helpers ----------
+  const biasChip = (sig) => `<span class="bias ${sig}">${BIAS_LABEL[sig]}</span>`;
+
+  function measureHtml(chart, index, id) {
+    const ex = L.explain(chart.candles, index, id);
+    const move = (ex.move > 0 ? '+' : ex.move < 0 ? '−' : '') + Math.abs(ex.move).toFixed(1);
+    const trendWord = ex.trend === 'down' ? 'falling' : ex.trend === 'up' ? 'rising' : 'no clear trend';
+    const rows = [`Trend into it: ${trendWord} (${move} avg ranges over 6 candles)`];
+    ex.candles.forEach((c, n) => {
+      const label = ex.candles.length > 1 ? `Candle ${n + 1}` : 'Candle';
+      rows.push(`${label}: ${c.colour}, body ${c.bodyPct}%, upper wick ${c.upperPct}%, lower wick ${c.lowerPct}%, size ${c.rangeAtr}× avg`);
+    });
+    return `<ul class="measure">${rows.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>`;
+  }
+
+  function lessonHtml(def) {
+    return `
+      <p class="label">How to recognise it</p>
+      <ul>${def.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
+      <p class="label">What it suggests</p>
+      <p>${esc(def.meaning)}</p>
+      <p class="label">Before acting</p>
+      <p>${esc(def.confirm)}</p>`;
+  }
+
+  function weightedPick(pool, kind) {
+    if (pool.length === 1) return pool[0];
+    const last = kind === 'spot' ? spot.lastId : drill.lastId;
+    const cands = pool.filter((p) => p.id !== last);
+    if (!prefs.adaptive) return cands[Math.floor(rng() * cands.length)];
+    const w = cands.map((p) => {
+      const s = stat(p.id);
+      const a = kind === 'spot' ? s.sa : s.a;
+      const c = kind === 'spot' ? s.sc : s.c;
+      return 1 - (c + 1) / (a + 2) + 0.15; // Laplace-smoothed error rate plus a floor
+    });
+    let r = rng() * w.reduce((x, y) => x + y, 0);
+    for (let i = 0; i < cands.length; i++) { r -= w[i]; if (r <= 0) return cands[i]; }
+    return cands[cands.length - 1];
+  }
+
+  // ---------- drill ----------
+  const drill = { q: null, answered: false, score: 0, total: 0, streak: 0, focus: null, lastId: null };
+
+  function drillPool() {
+    if (drill.focus) return [BY_ID[drill.focus]];
+    const pool = PATTERNS.filter((p) => prefs.groups[p.group]);
+    return pool.length ? pool : PATTERNS;
+  }
+
+  function buildOptions(q) {
+    if (prefs.mode === 'bias') {
+      return ['bullish', 'bearish', 'neutral'].map((b) => ({ value: b, label: BIAS_LABEL[b] }));
+    }
+    const def = BY_ID[q.id];
+    const taken = new Set(q.matches);
+    const chosen = [def.id];
+    const add = (id) => { if (!taken.has(id) && !chosen.includes(id) && chosen.length < 4) chosen.push(id); };
+    shuffle(def.confuse.slice()).slice(0, 2).forEach(add);
+    shuffle(drillPool().map((p) => p.id)).forEach(add);
+    shuffle(PATTERNS.map((p) => p.id)).forEach(add);
+    return shuffle(chosen).map((id) => ({ value: id, label: BY_ID[id].name }));
+  }
+
+  function newDrill() {
+    const target = weightedPick(drillPool(), 'drill');
+    drill.lastId = target.id;
+    drill.q = L.generateDrill(target.id, rng);
+    drill.q.options = buildOptions(drill.q);
+    drill.answered = false;
+    $('drill-prompt').textContent = prefs.mode === 'bias' ? 'Which way does this pattern lean?' : 'Which pattern just formed?';
+    $('drill-hint').textContent = (prefs.mode === 'bias' ? 'The pattern ends on the last candle. Keys 1–3 answer' : 'The pattern ends on the last candle. Keys 1–4 answer') + ', Enter moves on.';
+    $('drill-feedback').hidden = true;
+    $('drill-next').hidden = true;
+    drawDrill();
+    const box = $('drill-options');
+    box.innerHTML = '';
+    drill.q.options.forEach((o, n) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'opt';
+      b.dataset.value = o.value;
+      b.innerHTML = `<span class="key">${n + 1}</span><span>${esc(o.label)}</span>`;
+      b.addEventListener('click', () => answerDrill(o.value));
+      box.appendChild(b);
+    });
+  }
+
+  function drawDrill(reveal) {
+    const q = drill.q;
+    $('drill-instrument').textContent = `${q.pair.symbol} · ${q.tf.tf}`;
+    renderChart($('drill-chart'), q, {
+      shade: prefs.highlight || reveal ? [q.start, q.index] : null,
+      ohlcEl: $('drill-ohlc'),
+    });
+  }
+
+  function answerDrill(value) {
+    if (drill.answered) return;
+    drill.answered = true;
+    const q = drill.q;
+    const def = BY_ID[q.id];
+    const s = stat(q.id);
+    let ok;
+    if (prefs.mode === 'bias') ok = q.matches.some((id) => BY_ID[id].signal === value);
+    else ok = q.matches.includes(value);
+    s.a++;
+    if (ok) s.c++;
+    else if (prefs.mode === 'name') s.mix[value] = (s.mix[value] || 0) + 1;
+    drill.total++;
+    if (ok) { drill.score++; drill.streak++; } else drill.streak = 0;
+    prefs.best = Math.max(prefs.best, drill.streak);
+    persist();
+
+    for (const b of $('drill-options').children) {
+      b.disabled = true;
+      const v = b.dataset.value;
+      const right = prefs.mode === 'bias' ? v === def.signal : v === def.id;
+      if (right) b.classList.add('correct');
+      else if (v === value) b.classList.add('wrong');
+      else b.classList.add('dim');
+    }
+    drawDrill(true);
+
+    const others = q.matches.filter((id) => id !== q.id);
+    let html = `<p class="verdict">${ok ? 'Correct.' : 'Not this time.'}</p>
+      <h3>${esc(def.name)} ${biasChip(def.signal)}</h3>`;
+    if (others.length) html += `<p>This chart also qualifies as ${others.map((id) => '<b>' + esc(BY_ID[id].name) + '</b>').join(' and ')}.</p>`;
+    html += `<p class="label">What the chart shows</p>${measureHtml(q, q.index, q.id)}${lessonHtml(def)}`;
+    if (!ok && prefs.mode === 'name' && BY_ID[value]) {
+      const w = BY_ID[value];
+      html += `<p class="label">Why not ${esc(w.name)}</p><ul>${w.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>`;
+    }
+    const fb = $('drill-feedback');
+    fb.className = 'feedback ' + (ok ? 'ok' : 'bad');
+    fb.innerHTML = html;
+    fb.hidden = false;
+    $('drill-next').hidden = false;
+    $('drill-next').focus({ preventScroll: true });
+    updateScores();
+  }
+
+  function setFocus(id) {
+    drill.focus = id;
+    $('drill-focus').hidden = !id;
+    if (id) $('drill-focus-name').textContent = BY_ID[id].name;
+  }
+
+  // ---------- spot ----------
+  const spot = { q: null, done: false, score: 0, total: 0, streak: 0, lastId: null };
+
+  function spotPool() {
+    const pool = PATTERNS.filter((p) => p.spot !== false && prefs.spotGroups[p.group]);
+    return pool.length ? pool : PATTERNS.filter((p) => p.spot !== false);
+  }
+
+  function newSpot() {
+    const target = weightedPick(spotPool(), 'spot');
+    spot.lastId = target.id;
+    spot.q = L.generateSpot(target.id, rng);
+    spot.done = false;
+    $('spot-target').textContent = target.name;
+    $('spot-instrument').textContent = `${spot.q.pair.symbol} · ${spot.q.tf.tf}`;
+    $('spot-feedback').hidden = true;
+    $('spot-next').hidden = true;
+    $('spot-reveal').hidden = false;
+    renderChart($('spot-chart'), spot.q, { ohlcEl: $('spot-ohlc'), onPick: pickSpot, lastTag: true });
+  }
+
+  function pickSpot(i, gaveUp) {
+    if (spot.done) return;
+    spot.done = true;
+    const q = spot.q;
+    const def = BY_ID[q.id];
+    const ok = !gaveUp && L.matches(q.candles, i, q.id);
+    const s = stat(q.id);
+    s.sa++;
+    if (ok) s.sc++;
+    spot.total++;
+    if (ok) { spot.score++; spot.streak++; } else spot.streak = 0;
+    persist();
+
+    const marks = [{ range: [q.start, q.index], cls: 'mark-ok' }];
+    if (!ok && !gaveUp) marks.push({ range: [i, i], cls: 'mark-bad' });
+    renderChart($('spot-chart'), q, { ohlcEl: $('spot-ohlc'), marks });
+
+    let html;
+    if (ok) html = `<p class="verdict">Found it.</p>`;
+    else if (gaveUp) html = `<p class="verdict">Here it is, outlined in green.</p>`;
+    else {
+      const other = L.detectAt(q.candles, i).map((id) => BY_ID[id].name);
+      html = `<p class="verdict">Not that candle. The ${esc(def.name)} is outlined in green.</p>`;
+      if (other.length) html += `<p>The candle you picked completes ${other.map((n) => '<b>' + esc(n) + '</b>').join(' and ')} instead.</p>`;
+    }
+    html += `<h3>${esc(def.name)} ${biasChip(def.signal)}</h3><p class="label">What the chart shows</p>${measureHtml(q, q.index, q.id)}${lessonHtml(def)}`;
+    const fb = $('spot-feedback');
+    fb.className = 'feedback ' + (ok ? 'ok' : 'bad');
+    fb.innerHTML = html;
+    fb.hidden = false;
+    $('spot-reveal').hidden = true;
+    $('spot-next').hidden = false;
+    $('spot-next').focus({ preventScroll: true });
+    updateScores();
+  }
+
+  function updateScores() {
+    $('drill-score').textContent = drill.score;
+    $('drill-total').textContent = drill.total;
+    $('drill-streak').textContent = drill.streak;
+    $('drill-best').textContent = prefs.best;
+    $('spot-score').textContent = spot.score;
+    $('spot-total').textContent = spot.total;
+    $('spot-streak').textContent = spot.streak;
+  }
+
+  // ---------- library ----------
+  function buildLibrary() {
+    const box = $('lib-cards');
+    box.innerHTML = '';
+    PATTERNS.forEach((def, n) => {
+      const card = document.createElement('article');
+      card.className = 'card';
+      card.dataset.group = def.group;
+      card.dataset.signal = def.signal;
+      const ex = L.generateDrill(def.id, L.mulberry32(1000 + n * 7919), { length: 12 });
+      card.innerHTML = `
+        <div class="card-art"><svg class="chart" role="img" aria-label="Example ${esc(def.name)}"></svg></div>
+        <div class="card-head"><h3>${esc(def.name)}</h3>${biasChip(def.signal)}</div>
+        <div class="card-body">
+          <p class="card-meta">${def.candles} candle${def.candles > 1 ? 's' : ''} · ${TREND_LABEL[def.trend]}</p>
+          <ul>${def.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
+          <p class="label">What it suggests</p><p>${esc(def.meaning)}</p>
+          <p class="label">Before acting</p><p>${esc(def.confirm)}</p>
+        </div>
+        <div class="card-foot"><span class="card-meta">Shaded: the pattern</span><button type="button" class="ghost">Practise this</button></div>`;
+      renderChart(card.querySelector('svg'), ex, { compact: true, width: 320, height: 150, shade: [ex.start, ex.index] });
+      card.querySelector('button').addEventListener('click', () => practise(def.id));
+      box.appendChild(card);
+    });
+  }
+
+  function filterLibrary(f) {
+    for (const b of $('lib-filter').children) b.setAttribute('aria-pressed', String(b.dataset.f === f));
+    for (const c of $('lib-cards').children) {
+      c.hidden = !(f === 'all' || c.dataset.group === f || c.dataset.signal === f);
+    }
+  }
+
+  function practise(id) {
+    setFocus(id);
+    showTab('drill');
+    newDrill();
+  }
+
+  // ---------- progress ----------
+  function accCell(a, c) {
+    if (!a) return '<span class="measure">–</span>';
+    const pct = Math.round((100 * c) / a);
+    const cls = pct < 60 ? 'low' : pct >= 85 ? 'high' : '';
+    return `<span class="acc"><span class="acc-bar"><i class="${cls}" style="width:${pct}%"></i></span>${pct}% <span class="measure">${c}/${a}</span></span>`;
+  }
+
+  function renderProgress() {
+    const rows = PATTERNS.map((def) => {
+      const s = stat(def.id);
+      const mix = Object.entries(s.mix).sort((a, b) => b[1] - a[1])[0];
+      return { def, s, mix };
+    });
+    let a = 0, c = 0, sa = 0, sc = 0;
+    rows.forEach(({ s }) => { a += s.a; c += s.c; sa += s.sa; sc += s.sc; });
+    const tried = rows.filter((r) => r.s.a >= 3).sort((x, y) => x.s.c / x.s.a - y.s.c / y.s.a);
+    const parts = [];
+    if (a) parts.push(`Drill: ${c}/${a} correct (${Math.round((100 * c) / a)}%)`);
+    if (sa) parts.push(`Spot: ${sc}/${sa} found (${Math.round((100 * sc) / sa)}%)`);
+    if (tried.length && tried[0].s.c < tried[0].s.a) parts.push(`Weakest so far: ${tried[0].def.name}`);
+    $('prog-summary').textContent = parts.length ? parts.join(' · ') + '.' : 'No answers yet. Results from Drill and Spot appear here, saved in this browser only.';
+
+    $('prog-rows').innerHTML = rows.map(({ def, s, mix }) => `
+      <tr>
+        <th scope="row">${esc(def.name)}</th>
+        <td>${biasChip(def.signal)}</td>
+        <td class="num">${s.a + s.sa}</td>
+        <td><div>${accCell(s.a, s.c)}</div>${def.spot === false ? '' : `<div class="measure">Spot ${s.sa ? Math.round((100 * s.sc) / s.sa) + '% (' + s.sc + '/' + s.sa + ')' : '–'}</div>`}</td>
+        <td class="mixed">${mix ? esc(BY_ID[mix[0]].name) + ' ×' + mix[1] : ''}</td>
+        <td><button type="button" class="link" data-practise="${def.id}">Practise</button></td>
+      </tr>`).join('');
+  }
+
+  // ---------- tabs ----------
+  const TABS = ['drill', 'spot', 'library', 'progress'];
+  function showTab(name) {
+    if (!TABS.includes(name)) name = 'drill';
+    TABS.forEach((t) => {
+      $('tab-' + t).setAttribute('aria-selected', String(t === name));
+      $('tab-' + t).tabIndex = t === name ? 0 : -1;
+      $('panel-' + t).hidden = t !== name;
+    });
+    prefs.tab = name;
+    persist();
+    const svg = $(name + '-chart');
+    if (svg && svg._render) renderChart(svg, ...svg._render); // re-measure now the panel is visible
+    if (name === 'spot' && !spot.q) newSpot();
+    if (name === 'progress') renderProgress();
+  }
+
+  // ---------- wiring ----------
+  function init() {
+    $('drill-mode').value = prefs.mode;
+    ['single', 'double', 'triple'].forEach((g) => {
+      $('grp-' + g).checked = prefs.groups[g];
+      $('spot-' + g).checked = prefs.spotGroups[g];
+      $('grp-' + g).addEventListener('change', (e) => { prefs.groups[g] = e.target.checked; setFocus(null); persist(); newDrill(); });
+      $('spot-' + g).addEventListener('change', (e) => { prefs.spotGroups[g] = e.target.checked; persist(); newSpot(); });
+    });
+    $('opt-highlight').checked = prefs.highlight;
+    $('opt-adaptive').checked = prefs.adaptive;
+    $('drill-mode').addEventListener('change', (e) => { prefs.mode = e.target.value; persist(); newDrill(); });
+    $('opt-highlight').addEventListener('change', (e) => { prefs.highlight = e.target.checked; persist(); if (drill.q) drawDrill(drill.answered); });
+    $('opt-adaptive').addEventListener('change', (e) => { prefs.adaptive = e.target.checked; persist(); });
+    $('drill-focus-clear').addEventListener('click', () => { setFocus(null); newDrill(); });
+    $('drill-next').addEventListener('click', newDrill);
+    $('spot-next').addEventListener('click', newSpot);
+    $('spot-reveal').addEventListener('click', () => pickSpot(-1, true));
+
+    TABS.forEach((t, n) => {
+      const b = $('tab-' + t);
+      b.addEventListener('click', () => showTab(t));
+      b.addEventListener('keydown', (e) => {
+        if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+        const next = TABS[(n + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length];
+        showTab(next);
+        $('tab-' + next).focus();
+      });
+    });
+
+    $('lib-filter').addEventListener('click', (e) => { const b = e.target.closest('[data-f]'); if (b) filterLibrary(b.dataset.f); });
+    $('prog-rows').addEventListener('click', (e) => { const b = e.target.closest('[data-practise]'); if (b) practise(b.dataset.practise); });
+    $('prog-reset').addEventListener('click', () => { $('prog-confirm').hidden = false; $('prog-reset').hidden = true; });
+    $('prog-reset-no').addEventListener('click', () => { $('prog-confirm').hidden = true; $('prog-reset').hidden = false; });
+    $('prog-reset-yes').addEventListener('click', () => {
+      for (const k of Object.keys(stats)) delete stats[k];
+      prefs.best = 0;
+      persist();
+      $('prog-confirm').hidden = true;
+      $('prog-reset').hidden = false;
+      updateScores();
+      renderProgress();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if ($('panel-drill').hidden || e.altKey || e.ctrlKey || e.metaKey) return;
+      const tag = (e.target.tagName || '').toLowerCase();
+      if (tag === 'select' || tag === 'input') return;
+      if (!drill.answered && /^[1-4]$/.test(e.key)) {
+        const b = $('drill-options').children[+e.key - 1];
+        if (b) { e.preventDefault(); b.click(); }
+      } else if (drill.answered && e.key === 'Enter' && e.target === document.body) {
+        e.preventDefault();
+        newDrill();
+      }
+    });
+
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        for (const id of ['drill-chart', 'spot-chart']) {
+          const svg = $(id);
+          if (svg._render && svg.getBoundingClientRect().width) renderChart(svg, ...svg._render);
+        }
+      }, 150);
+    });
+
+    buildLibrary();
+    newDrill();
+    updateScores();
+    const hash = location.hash.replace('#', '');
+    showTab(TABS.includes(hash) ? hash : prefs.tab);
+  }
+
+  init();
+})();
+
+</script>
+</body>
+</html>

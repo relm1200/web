@@ -1,0 +1,10 @@
+{
+  "name": "wick-reader",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Interactive forex candlestick pattern identification trainer",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "build:single": "node scripts/build-single.js"
+  }
+}
