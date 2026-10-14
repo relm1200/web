@@ -69,6 +69,14 @@ candles"). The trainer turns these into numbers, shown in each rule. The setup t
 (average slope ≥ 1.0 average ranges, within 0.6 of the level, last candle ≥ 1.3× average range)
 are the trainer's own; the guide gives no figures.
 
+## TradingView indicator
+
+`tradingview/wick-reader-patterns.pine` is a Pine Script v6 indicator that marks the same 28
+patterns on live TradingView charts, with optional HH / HL / LH / LL swing labels, a trend
+table and alerts. Install steps, settings and a reference list of expected marks on real
+EUR/USD data are in [`tradingview/README.md`](tradingview/README.md). A parity test
+translates the Pine rules to JavaScript and checks they flag exactly what the trainer flags.
+
 ## Market structure
 
 Defined in `js/structure.js` (standard Dow Theory reading; neither attached PDF defines swing

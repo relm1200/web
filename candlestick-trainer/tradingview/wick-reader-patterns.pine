@@ -1,0 +1,376 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// Wick Reader Patterns
+//
+// Marks the 28 candlestick patterns from the Wick Reader trainer when they form, using
+// the same rules (js/patterns.js). Sources: "The Monster Guide to Candlestick Patterns"
+// (Rayner Teo) and the "58 Candlestick Patterns PDF Manual" (tradingpdf.net). Rules are
+// tuned for forex: no gap requirements, because spot FX rarely gaps.
+//
+// Context used by the rules:
+//   avg range  = mean (high - low) of the 10 candles before the pattern's first candle
+//   trend      = (close of the candle before the pattern - open 6 candles before the
+//                pattern) / avg range. <= -1.5 is a decline, >= +1.5 a rally.
+// Optional market-structure overlay: 2-bar swing highs/lows labelled HH / LH / HL / LL.
+//
+// Educational tool. Candlestick patterns describe probabilities, not certainties.
+
+//@version=6
+indicator("Wick Reader Patterns", shorttitle = "WR Patterns", overlay = true, max_labels_count = 500, max_boxes_count = 500, max_lines_count = 500)
+
+// ───────────── inputs ─────────────
+G_DISP = "Display"
+i_confirmed  = input.bool(true, "Only mark closed candles", group = G_DISP, tooltip = "Waits for the candle to close before marking it, so marks never appear and then vanish.")
+i_textMode   = input.string("Short", "Label text", options = ["Short", "Full name"], group = G_DISP)
+i_bias       = input.string("All", "Show", options = ["All", "Bullish only", "Bearish only"], group = G_DISP)
+i_boxes      = input.bool(true, "Box the pattern's candles", group = G_DISP)
+i_bullCol    = input.color(color.new(#0d8566, 0), "Bullish", group = G_DISP, inline = "g_disp_c")
+i_bearCol    = input.color(color.new(#c3313f, 0), "Bearish", group = G_DISP, inline = "g_disp_c")
+i_neutCol    = input.color(color.new(#8a6a12, 0), "Indecision", group = G_DISP, inline = "g_disp_c")
+
+G_CTX = "Context (match the trainer)"
+i_atrLen     = input.int(10, "Average range length", minval = 2, group = G_CTX)
+i_trendLen   = input.int(6, "Trend lookback (candles)", minval = 2, group = G_CTX)
+i_trendThr   = input.float(1.5, "Trend threshold (avg ranges)", minval = 0.1, step = 0.1, group = G_CTX)
+
+G1 = "1-candle patterns"
+e_doji   = input.bool(true, "Doji", group = G1, inline = "g1_a")
+e_dfly   = input.bool(true, "Dragonfly Doji", group = G1, inline = "g1_a")
+e_grav   = input.bool(true, "Gravestone Doji", group = G1, inline = "g1_b")
+e_ham    = input.bool(true, "Hammer", group = G1, inline = "g1_b")
+e_hang   = input.bool(true, "Hanging Man", group = G1, inline = "g1_c")
+e_invh   = input.bool(true, "Inverted Hammer", group = G1, inline = "g1_c")
+e_sstar  = input.bool(true, "Shooting Star", group = G1, inline = "g1_d")
+e_stop   = input.bool(false, "Spinning Top", group = G1, inline = "g1_d", tooltip = "Off by default: spinning tops are very common in normal price action.")
+e_bmaru  = input.bool(true, "Bullish Marubozu", group = G1, inline = "g1_e")
+e_smaru  = input.bool(true, "Bearish Marubozu", group = G1, inline = "g1_e")
+
+G2 = "2-candle patterns"
+e_buEng  = input.bool(true, "Bullish Engulfing", group = G2, inline = "g2_a")
+e_beEng  = input.bool(true, "Bearish Engulfing", group = G2, inline = "g2_a")
+e_buHar  = input.bool(true, "Bullish Harami", group = G2, inline = "g2_b")
+e_beHar  = input.bool(true, "Bearish Harami", group = G2, inline = "g2_b")
+e_pierce = input.bool(true, "Piercing Line", group = G2, inline = "g2_c")
+e_dcc    = input.bool(true, "Dark Cloud Cover", group = G2, inline = "g2_c")
+e_twB    = input.bool(true, "Tweezer Bottom", group = G2, inline = "g2_d")
+e_twT    = input.bool(true, "Tweezer Top", group = G2, inline = "g2_d")
+
+G3 = "3- and 5-candle patterns"
+e_mstar  = input.bool(true, "Morning Star", group = G3, inline = "g3_a")
+e_estar  = input.bool(true, "Evening Star", group = G3, inline = "g3_a")
+e_tws    = input.bool(true, "Three White Soldiers", group = G3, inline = "g3_b")
+e_tbc    = input.bool(true, "Three Black Crows", group = G3, inline = "g3_b")
+e_tiu    = input.bool(true, "Three Inside Up", group = G3, inline = "g3_c")
+e_tid    = input.bool(true, "Three Inside Down", group = G3, inline = "g3_c")
+e_tou    = input.bool(true, "Three Outside Up", group = G3, inline = "g3_d")
+e_tod    = input.bool(true, "Three Outside Down", group = G3, inline = "g3_d")
+e_r3m    = input.bool(true, "Rising Three Methods", group = G3, inline = "g3_e")
+e_f3m    = input.bool(true, "Falling Three Methods", group = G3, inline = "g3_e")
+
+G_MS = "Market structure"
+i_struct     = input.bool(false, "Label swings HH / HL / LH / LL", group = G_MS)
+i_swingN     = input.int(2, "Swing strength (candles each side)", minval = 1, maxval = 10, group = G_MS)
+i_zigzag     = input.bool(true, "Join swings with a zigzag", group = G_MS)
+i_table      = input.bool(true, "Show trend table", group = G_MS)
+
+// ───────────── candle helpers (k = bars back) ─────────────
+rng(int k)  => high[k] - low[k]
+bod(int k)  => math.abs(close[k] - open[k])
+bTop(int k) => math.max(open[k], close[k])
+bBot(int k) => math.min(open[k], close[k])
+upw(int k)  => high[k] - bTop(k)
+low_w(int k) => bBot(k) - low[k]
+isBull(int k) => close[k] > open[k]
+isBear(int k) => close[k] < open[k]
+closePos(int k) => rng(k) > 0 ? (close[k] - low[k]) / rng(k) : 0.5
+
+isDojiBody(int k)  => bod(k) <= 0.1 * rng(k)
+isSmallBody(int k) => bod(k) > 0.1 * rng(k) and bod(k) <= 0.35 * rng(k)
+isLongBody(int k, float a) => bod(k) >= 0.6 * rng(k) and bod(k) >= 0.8 * a
+
+hammerShape(int k, float a) =>
+    isSmallBody(k) and low_w(k) >= 2 * bod(k) and low_w(k) >= 0.55 * rng(k) and upw(k) <= 0.12 * rng(k) and rng(k) >= 0.7 * a and closePos(k) >= 0.75
+invertedShape(int k, float a) =>
+    isSmallBody(k) and upw(k) >= 2 * bod(k) and upw(k) >= 0.55 * rng(k) and low_w(k) <= 0.12 * rng(k) and rng(k) >= 0.7 * a and closePos(k) <= 0.25
+
+// two-candle helpers: k is the SECOND candle, k + 1 the first; dir 1 bullish, -1 bearish
+haramiPair(int k, float a, int dir) =>
+    outer = dir > 0 ? isBear(k + 1) : isBull(k + 1)
+    inner = dir > 0 ? isBull(k) : isBear(k)
+    outer and isLongBody(k + 1, a) and inner and bTop(k) <= bTop(k + 1) and bBot(k) >= bBot(k + 1) and bod(k) <= 0.5 * bod(k + 1)
+engulfPair(int k, float a, int dir) =>
+    first  = dir > 0 ? isBear(k + 1) : isBull(k + 1)
+    second = dir > 0 ? isBull(k) : isBear(k)
+    first and bod(k + 1) >= 0.3 * a and second and bBot(k) <= bBot(k + 1) and bTop(k) >= bTop(k + 1) and bod(k) > 1.1 * bod(k + 1)
+
+// ───────────── context per pattern length ─────────────
+avgRange = ta.sma(high - low, i_atrLen)
+// avg range of the candles before a pattern of length L that ends on this bar
+atrFor(int L) => avgRange[L]
+trendFor(int L) =>
+    a = atrFor(L)
+    m = a > 0 ? (close[L] - open[L + i_trendLen - 1]) / a : 0.0
+    m <= -i_trendThr ? -1 : m >= i_trendThr ? 1 : 0
+
+a1 = atrFor(1)
+t1 = trendFor(1)
+a2 = atrFor(2)
+t2 = trendFor(2)
+a3 = atrFor(3)
+t3 = trendFor(3)
+a5 = atrFor(5)
+t5 = trendFor(5)
+
+// ───────────── 1-candle ─────────────
+p_doji  = isDojiBody(0) and upw(0) >= 0.25 * rng(0) and low_w(0) >= 0.25 * rng(0) and rng(0) >= 0.5 * a1
+p_dfly  = t1 == -1 and isDojiBody(0) and upw(0) <= 0.1 * rng(0) and low_w(0) >= 0.7 * rng(0) and rng(0) >= 0.6 * a1
+p_grav  = t1 == 1 and isDojiBody(0) and low_w(0) <= 0.1 * rng(0) and upw(0) >= 0.7 * rng(0) and rng(0) >= 0.6 * a1
+p_ham   = t1 == -1 and hammerShape(0, a1)
+p_hang  = t1 == 1 and hammerShape(0, a1)
+p_invh  = t1 == -1 and invertedShape(0, a1)
+p_sstar = t1 == 1 and invertedShape(0, a1)
+p_stop  = isSmallBody(0) and upw(0) >= 0.25 * rng(0) and low_w(0) >= 0.25 * rng(0)
+p_bmaru = isBull(0) and bod(0) >= 0.9 * rng(0) and rng(0) >= 1.3 * a1
+p_smaru = isBear(0) and bod(0) >= 0.9 * rng(0) and rng(0) >= 1.3 * a1
+
+// ───────────── 2-candle ─────────────
+p_buEng  = t2 == -1 and isBear(1) and bod(1) >= 0.3 * a2 and isBull(0) and open <= close[1] and close >= open[1] and bod(0) > 1.1 * bod(1)
+p_beEng  = t2 == 1 and isBull(1) and bod(1) >= 0.3 * a2 and isBear(0) and open >= close[1] and close <= open[1] and bod(0) > 1.1 * bod(1)
+p_buHar  = t2 == -1 and isBear(1) and isLongBody(1, a2) and isBull(0) and bTop(0) <= open[1] and bBot(0) >= close[1] and bod(0) <= 0.5 * bod(1)
+p_beHar  = t2 == 1 and isBull(1) and isLongBody(1, a2) and isBear(0) and bTop(0) <= close[1] and bBot(0) >= open[1] and bod(0) <= 0.5 * bod(1)
+p_pierce = t2 == -1 and isBear(1) and isLongBody(1, a2) and isBull(0) and open <= close[1] and close > close[1] + 0.5 * bod(1) and close < open[1]
+p_dcc    = t2 == 1 and isBull(1) and isLongBody(1, a2) and isBear(0) and open >= close[1] and close < close[1] - 0.5 * bod(1) and close > open[1]
+p_twB    = t2 == -1 and low_w(1) >= 0.25 * rng(1) and rng(1) >= 0.6 * a2 and isBull(0) and bod(0) >= 0.2 * a2 and math.abs(low[1] - low) <= 0.05 * a2
+p_twT    = t2 == 1 and upw(1) >= 0.25 * rng(1) and rng(1) >= 0.6 * a2 and isBear(0) and bod(0) >= 0.2 * a2 and math.abs(high[1] - high) <= 0.05 * a2
+
+// ───────────── 3-candle ─────────────
+p_mstar = t3 == -1 and isBear(2) and isLongBody(2, a3) and bod(1) <= 0.3 * bod(2) and rng(1) <= 0.6 * rng(2) and bTop(1) <= close[2] + 0.1 * bod(2) and isBull(0) and close >= close[2] + 0.5 * bod(2)
+p_estar = t3 == 1 and isBull(2) and isLongBody(2, a3) and bod(1) <= 0.3 * bod(2) and rng(1) <= 0.6 * rng(2) and bBot(1) >= close[2] - 0.1 * bod(2) and isBear(0) and close <= close[2] - 0.5 * bod(2)
+
+soldier(int k, float a) => isBull(k) and bod(k) >= 0.6 * rng(k) and bod(k) >= 0.6 * a and upw(k) <= 0.25 * rng(k)
+crow(int k, float a)    => isBear(k) and bod(k) >= 0.6 * rng(k) and bod(k) >= 0.6 * a and low_w(k) <= 0.25 * rng(k)
+stepUp(int k)   => close[k] > close[k + 1] and open[k] >= open[k + 1] and open[k] <= close[k + 1]
+stepDown(int k) => close[k] < close[k + 1] and open[k] <= open[k + 1] and open[k] >= close[k + 1]
+p_tws = t3 == -1 and soldier(2, a3) and soldier(1, a3) and soldier(0, a3) and stepUp(1) and stepUp(0)
+p_tbc = t3 == 1 and crow(2, a3) and crow(1, a3) and crow(0, a3) and stepDown(1) and stepDown(0)
+
+p_tiu = t3 == -1 and haramiPair(1, a3, 1) and close > open and close > close[1]
+p_tid = t3 == 1 and haramiPair(1, a3, -1) and close < open and close < close[1]
+p_tou = t3 == -1 and engulfPair(1, a3, 1) and close > open and close > close[1]
+p_tod = t3 == 1 and engulfPair(1, a3, -1) and close < open and close < close[1]
+
+// ───────────── 5-candle ─────────────
+threeMethods(float a, int dir) =>
+    firstOk = (dir > 0 ? isBull(4) : isBear(4)) and isLongBody(4, a)
+    innerOk = true
+    for j = 1 to 3
+        if rng(j) > 0.6 * rng(4) or bod(j) > 0.5 * bod(4) or high[j] > high[4] or low[j] < low[4]
+            innerOk := false
+    lastOk = (dir > 0 ? isBull(0) : isBear(0)) and bod(0) >= 0.6 * rng(0) and bod(0) >= 0.8 * a
+    breakOk = dir > 0 ? close > high[4] : close < low[4]
+    firstOk and innerOk and lastOk and breakOk
+p_r3m = t5 == 1 and threeMethods(a5, 1)
+p_f3m = t5 == -1 and threeMethods(a5, -1)
+
+// ───────────── marking ─────────────
+// One entry per pattern, in the same order in every array.
+var array<string> P_SHORT = array.from("Doji", "ST", "DfD", "GvD", "H", "HM", "IH", "SS", "BuM", "BeM", "BuE", "BeE", "BuH", "BeH", "PL", "DCC", "TwB", "TwT", "MS", "ES", "3WS", "3BC", "3IU", "3ID", "3OU", "3OD", "R3M", "F3M")
+var array<string> P_NAME = array.from("Doji", "Spinning Top", "Dragonfly Doji", "Gravestone Doji", "Hammer", "Hanging Man", "Inverted Hammer", "Shooting Star", "Bullish Marubozu", "Bearish Marubozu", "Bullish Engulfing", "Bearish Engulfing", "Bullish Harami", "Bearish Harami", "Piercing Line", "Dark Cloud Cover", "Tweezer Bottom", "Tweezer Top", "Morning Star", "Evening Star", "Three White Soldiers", "Three Black Crows", "Three Inside Up", "Three Inside Down", "Three Outside Up", "Three Outside Down", "Rising Three Methods", "Falling Three Methods")
+// 1 bullish, -1 bearish, 0 indecision
+var array<int> P_BIAS = array.from(0, 0, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1)
+var array<int> P_LEN = array.from(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 5, 5)
+var array<string> P_TIP = array.from(
+     "body <= 10% of range, wicks of 25%+ on both sides. Indecision.",
+     "body 10-35% of range, wicks of 25%+ on both sides. Indecision.",
+     "after a decline: doji body, lower wick >= 70% of range, no upper wick.",
+     "after a rally: doji body, upper wick >= 70% of range, no lower wick.",
+     "after a decline: small body closing in the top quarter, lower wick >= 2x body.",
+     "after a rally: hammer shape. Needs a bearish close next to confirm.",
+     "after a decline: small body closing in the bottom quarter, upper wick >= 2x body.",
+     "after a rally: small body closing in the bottom quarter, upper wick >= 2x body.",
+     "bullish body >= 90% of range, range >= 1.3x average.",
+     "bearish body >= 90% of range, range >= 1.3x average.",
+     "after a decline: bullish body covers the prior bearish body.",
+     "after a rally: bearish body covers the prior bullish body.",
+     "after a decline: small bullish body inside a long bearish body.",
+     "after a rally: small bearish body inside a long bullish body.",
+     "after a decline: closes past the middle of the long bearish body, below its open.",
+     "after a rally: closes past the middle of the long bullish body, above its open.",
+     "after a decline: same low twice (within 5% of avg range), second candle bullish.",
+     "after a rally: same high twice (within 5% of avg range), second candle bearish.",
+     "after a decline: long bearish, small candle, bullish close past the middle of candle 1.",
+     "after a rally: long bullish, small candle, bearish close past the middle of candle 1.",
+     "after a decline: three solid bullish candles, each opening inside the last and closing higher.",
+     "after a rally: three solid bearish candles, each opening inside the last and closing lower.",
+     "after a decline: bullish harami, then a bullish close above candle 2.",
+     "after a rally: bearish harami, then a bearish close below candle 2.",
+     "after a decline: bullish engulfing, then a bullish close above candle 2.",
+     "after a rally: bearish engulfing, then a bearish close below candle 2.",
+     "in an uptrend: big bullish candle, 3 small candles inside it, close above its high.",
+     "in a downtrend: big bearish candle, 3 small candles inside it, close below its low.")
+
+hits = array.from(
+     p_doji and e_doji, p_stop and e_stop, p_dfly and e_dfly, p_grav and e_grav,
+     p_ham and e_ham, p_hang and e_hang, p_invh and e_invh, p_sstar and e_sstar,
+     p_bmaru and e_bmaru, p_smaru and e_smaru, p_buEng and e_buEng, p_beEng and e_beEng,
+     p_buHar and e_buHar, p_beHar and e_beHar, p_pierce and e_pierce, p_dcc and e_dcc,
+     p_twB and e_twB, p_twT and e_twT, p_mstar and e_mstar, p_estar and e_estar,
+     p_tws and e_tws, p_tbc and e_tbc, p_tiu and e_tiu, p_tid and e_tid,
+     p_tou and e_tou, p_tod and e_tod, p_r3m and e_r3m, p_f3m and e_f3m)
+
+ready    = not i_confirmed or barstate.isconfirmed
+full     = i_textMode == "Full name"
+showBull = i_bias != "Bearish only"
+showBear = i_bias != "Bullish only"
+showNeut = i_bias == "All"
+
+string bullTxt = ""
+string bearTxt = ""
+string neutTxt = ""
+string bullTip = ""
+string bearTip = ""
+string neutTip = ""
+string alertTxt = ""
+int bullLen = 0
+int bearLen = 0
+for i = 0 to hits.size() - 1
+    if hits.get(i)
+        b = P_BIAS.get(i)
+        if (b == 1 and showBull) or (b == -1 and showBear) or (b == 0 and showNeut)
+            txt = full ? P_NAME.get(i) : P_SHORT.get(i)
+            tip = P_NAME.get(i) + ": " + P_TIP.get(i)
+            alertTxt := alertTxt == "" ? P_NAME.get(i) : alertTxt + ", " + P_NAME.get(i)
+            if b == 1
+                bullTxt := bullTxt == "" ? txt : bullTxt + "\n" + txt
+                bullTip := bullTip == "" ? tip : bullTip + "\n" + tip
+                bullLen := math.max(bullLen, P_LEN.get(i))
+            else if b == -1
+                bearTxt := bearTxt == "" ? txt : bearTxt + "\n" + txt
+                bearTip := bearTip == "" ? tip : bearTip + "\n" + tip
+                bearLen := math.max(bearLen, P_LEN.get(i))
+            else
+                neutTxt := neutTxt == "" ? txt : neutTxt + "\n" + txt
+                neutTip := neutTip == "" ? tip : neutTip + "\n" + tip
+
+drawBox(int len, color col) =>
+    hi = high
+    lo = low
+    for j = 1 to len - 1
+        hi := math.max(hi, high[j])
+        lo := math.min(lo, low[j])
+    box.new(bar_index - len + 1, hi, bar_index, lo, border_color = col, bgcolor = color.new(col, 88))
+
+if ready
+    if bullTxt != ""
+        label.new(bar_index, low, bullTxt, yloc = yloc.belowbar, style = label.style_label_up, color = i_bullCol, textcolor = color.white, size = size.small, tooltip = bullTip)
+        if i_boxes and bullLen > 1
+            drawBox(bullLen, i_bullCol)
+    if bearTxt != ""
+        label.new(bar_index, high, bearTxt, yloc = yloc.abovebar, style = label.style_label_down, color = i_bearCol, textcolor = color.white, size = size.small, tooltip = bearTip)
+        if i_boxes and bearLen > 1
+            drawBox(bearLen, i_bearCol)
+    if neutTxt != ""
+        label.new(bar_index, high, neutTxt, yloc = yloc.abovebar, style = label.style_label_down, color = i_neutCol, textcolor = color.white, size = size.tiny, tooltip = neutTip)
+    if alertTxt != ""
+        alert(syminfo.ticker + " " + timeframe.period + ": " + alertTxt, alert.freq_once_per_bar_close)
+
+// ───────────── market structure ─────────────
+// Swing high: high[n] above the n candles on each side (strict). Swing low mirrors it.
+// Two swings of the same kind in a row keep the more extreme one, so highs and lows alternate.
+n = i_swingN
+swingHigh() =>
+    ok = bar_index >= 2 * n
+    for j = 0 to 2 * n
+        if j != n and high[j] >= high[n]
+            ok := false
+    ok
+swingLow() =>
+    ok = bar_index >= 2 * n
+    for j = 0 to 2 * n
+        if j != n and low[j] <= low[n]
+            ok := false
+    ok
+
+var int lastKind = 0
+var float hiCur = na
+var float hiRef = na
+var int hiBar = na
+var float loCur = na
+var float loRef = na
+var int loBar = na
+var string hiTag = ""
+var string loTag = ""
+var label hiLbl = na
+var label loLbl = na
+var line hiLine = na
+var line loLine = na
+
+tagColor(string t) => t == "HH" or t == "HL" ? i_bullCol : t == "LH" or t == "LL" ? i_bearCol : color.gray
+
+if i_struct
+    isH = swingHigh()
+    isL = swingLow()
+    if isH
+        p = high[n]
+        b = bar_index - n
+        isReplace = lastKind == 1 and p > hiCur
+        if lastKind != 1 or isReplace
+            if isReplace
+                label.delete(hiLbl)
+                line.delete(hiLine)
+            else
+                hiRef := hiCur
+            hiCur := p
+            hiBar := b
+            lastKind := 1
+            hiTag := na(hiRef) ? "" : p > hiRef ? "HH" : "LH"
+            hiLbl := label.new(b, p, hiTag == "" ? "H" : hiTag, style = label.style_label_down, color = color.new(color.white, 100), textcolor = tagColor(hiTag), size = size.small)
+            if i_zigzag and not na(loBar)
+                hiLine := line.new(loBar, loCur, b, p, color = color.gray, style = line.style_dashed)
+    if isL
+        p = low[n]
+        b = bar_index - n
+        isReplace = lastKind == -1 and p < loCur
+        if lastKind != -1 or isReplace
+            if isReplace
+                label.delete(loLbl)
+                line.delete(loLine)
+            else
+                loRef := loCur
+            loCur := p
+            loBar := b
+            lastKind := -1
+            loTag := na(loRef) ? "" : p > loRef ? "HL" : "LL"
+            loLbl := label.new(b, p, loTag == "" ? "L" : loTag, style = label.style_label_up, color = color.new(color.white, 100), textcolor = tagColor(loTag), size = size.small)
+            if i_zigzag and not na(hiBar)
+                loLine := line.new(hiBar, hiCur, b, p, color = color.gray, style = line.style_dashed)
+
+structTrend = hiTag == "HH" and loTag == "HL" ? 1 : hiTag == "LH" and loTag == "LL" ? -1 : 0
+trendName = structTrend == 1 ? "Uptrend" : structTrend == -1 ? "Downtrend" : "Range / no clear trend"
+
+var table tbl = table.new(position.top_right, 2, 3, border_width = 1)
+if i_struct and i_table and barstate.islast
+    table.cell(tbl, 0, 0, "Structure", text_color = chart.fg_color, text_size = size.small)
+    table.cell(tbl, 1, 0, trendName, text_color = structTrend == 1 ? i_bullCol : structTrend == -1 ? i_bearCol : chart.fg_color, text_size = size.small)
+    table.cell(tbl, 0, 1, "Last swing high", text_color = chart.fg_color, text_size = size.small)
+    table.cell(tbl, 1, 1, hiTag == "" ? "-" : hiTag, text_color = tagColor(hiTag), text_size = size.small)
+    table.cell(tbl, 0, 2, "Last swing low", text_color = chart.fg_color, text_size = size.small)
+    table.cell(tbl, 1, 2, loTag == "" ? "-" : loTag, text_color = tagColor(loTag), text_size = size.small)
+
+// ───────────── alerts ─────────────
+// For one alert covering every enabled pattern, create an alert on this indicator and
+// choose "Any alert() function call". The conditions below allow per-pattern alerts.
+anyBull = p_dfly or p_ham or p_invh or p_bmaru or p_buEng or p_buHar or p_pierce or p_twB or p_mstar or p_tws or p_tiu or p_tou or p_r3m
+anyBear = p_grav or p_hang or p_sstar or p_smaru or p_beEng or p_beHar or p_dcc or p_twT or p_estar or p_tbc or p_tid or p_tod or p_f3m
+alertcondition(anyBull, "Any bullish pattern", "{{ticker}} {{interval}}: bullish candlestick pattern")
+alertcondition(anyBear, "Any bearish pattern", "{{ticker}} {{interval}}: bearish candlestick pattern")
+alertcondition(p_ham, "Hammer", "{{ticker}} {{interval}}: Hammer")
+alertcondition(p_sstar, "Shooting Star", "{{ticker}} {{interval}}: Shooting Star")
+alertcondition(p_buEng, "Bullish Engulfing", "{{ticker}} {{interval}}: Bullish Engulfing")
+alertcondition(p_beEng, "Bearish Engulfing", "{{ticker}} {{interval}}: Bearish Engulfing")
+alertcondition(p_pierce, "Piercing Line", "{{ticker}} {{interval}}: Piercing Line")
+alertcondition(p_dcc, "Dark Cloud Cover", "{{ticker}} {{interval}}: Dark Cloud Cover")
+alertcondition(p_twB, "Tweezer Bottom", "{{ticker}} {{interval}}: Tweezer Bottom")
+alertcondition(p_twT, "Tweezer Top", "{{ticker}} {{interval}}: Tweezer Top")
+alertcondition(p_mstar, "Morning Star", "{{ticker}} {{interval}}: Morning Star")
+alertcondition(p_estar, "Evening Star", "{{ticker}} {{interval}}: Evening Star")
+alertcondition(structTrend != structTrend[1], "Structure trend changed", "{{ticker}} {{interval}}: market structure trend changed")
