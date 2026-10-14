@@ -72,8 +72,9 @@ are the trainer's own; the guide gives no figures.
 ## TradingView indicator
 
 `tradingview/wick-reader-patterns.pine` is a Pine Script v6 indicator that marks the same 28
-patterns on live TradingView charts, with optional HH / HL / LH / LL swing labels, a trend
-table and alerts. Install steps, settings and a reference list of expected marks on real
+patterns on live TradingView charts. It grades reversal patterns against the Monster Guide's
+setup checklist (with entry and stop on passing setups), and adds optional HH / HL / LH / LL
+swing labels, a trend table and alerts. Install steps, settings and a reference list of expected marks on real
 EUR/USD data are in [`tradingview/README.md`](tradingview/README.md). A parity test
 translates the Pine rules to JavaScript and checks they flag exactly what the trainer flags.
 

@@ -220,5 +220,42 @@
     throw new Error('Could not generate structure chart');
   }
 
-  return { STRUCTURE, LABELS, TRENDS, SOURCE_NOTE, SCENARIOS, findSwings, labelSwings, trendFrom, analyse, generateStructure };
+  // ---------- setup checklist on live charts ----------
+  // On a live chart nobody draws the support/resistance line, so the level check uses
+  // every confirmed swing high and low (raw, before alternation) as a candidate level.
+  // A swing at index k is confirmed at k + strength, and must be confirmed before the
+  // pattern starts and no more than `lookback` candles before the pattern's last candle.
+
+  function rawSwings(cs, n = STRUCTURE.strength) {
+    const out = [];
+    for (let i = n; i < cs.length - n; i++) {
+      let hi = true, lo = true;
+      for (let j = i - n; j <= i + n; j++) {
+        if (j === i) continue;
+        if (cs[j].h >= cs[i].h) hi = false;
+        if (cs[j].l <= cs[i].l) lo = false;
+      }
+      if (hi) out.push({ index: i, kind: 'high', price: cs[i].h, confirmed: i + n });
+      if (lo) out.push({ index: i, kind: 'low', price: cs[i].l, confirmed: i + n });
+    }
+    return out;
+  }
+
+  function evaluateSetupLive(cs, i, id, opts = {}) {
+    const n = opts.strength || STRUCTURE.strength;
+    const lookback = opts.lookback || 100;
+    const def = C.BY_ID[id];
+    const start = i - def.candles + 1;
+    const levels = rawSwings(cs.slice(0, i + 1), n).filter((s) => s.confirmed < start && s.confirmed >= i - lookback);
+    let best = null;
+    for (const lv of levels) {
+      const ev = C.evaluateSetup(cs, i, id, lv.price);
+      if (ev.level.ok && (!best || Math.abs(ev.level.dist) < Math.abs(best.ev.level.dist))) best = { lv, ev };
+    }
+    const base = C.evaluateSetup(cs, i, id, best ? best.lv.price : NaN);
+    const level = best ? { ok: true, price: best.lv.price, dist: best.ev.level.dist, index: best.lv.index } : { ok: false, price: null, dist: null, index: null };
+    return { trend: base.trend, size: base.size, level, extreme: base.extreme, atr: base.atr, pass: base.trend.ok && level.ok && base.size.ok };
+  }
+
+  return { STRUCTURE, LABELS, TRENDS, SOURCE_NOTE, SCENARIOS, findSwings, labelSwings, trendFrom, analyse, generateStructure, rawSwings, evaluateSetupLive };
 });

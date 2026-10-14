@@ -11,6 +11,9 @@
 //   trend      = (close of the candle before the pattern - open 6 candles before the
 //                pattern) / avg range. <= -1.5 is a decline, >= +1.5 a rally.
 // Optional market-structure overlay: 2-bar swing highs/lows labelled HH / LH / HL / LL.
+// Setup checklist (Monster Guide pp. 14, 20) on reversal patterns: with the bigger trend
+// (20-period average slope), at a support/resistance level (a recent confirmed swing), and
+// larger than the earlier candles. Passing setups get an entry and stop.
 //
 // Educational tool. Candlestick patterns describe probabilities, not certainties.
 
@@ -71,6 +74,20 @@ i_struct     = input.bool(false, "Label swings HH / HL / LH / LL", group = G_MS)
 i_swingN     = input.int(2, "Swing strength (candles each side)", minval = 1, maxval = 10, group = G_MS)
 i_zigzag     = input.bool(true, "Join swings with a zigzag", group = G_MS)
 i_table      = input.bool(true, "Show trend table", group = G_MS)
+
+G_SET = "Setup checklist (Monster Guide pp. 14, 20)"
+i_setup      = input.string("Show on setup patterns", "Checklist", options = ["Off", "Show on setup patterns", "Only passing setups"], group = G_SET, tooltip = "Grades Hammer, Bullish Engulfing, Piercing Line, Tweezer Bottom, Morning Star and their bearish mirrors.")
+i_maLen      = input.int(20, "Trend average length", minval = 2, group = G_SET)
+i_maLook     = input.int(10, "Slope measured over (candles)", minval = 1, group = G_SET)
+i_maSlope    = input.float(1.0, "Minimum slope (avg ranges)", minval = 0.1, step = 0.1, group = G_SET)
+i_lvlTol     = input.float(0.6, "Level: max distance short of it (avg ranges)", minval = 0.0, step = 0.1, group = G_SET)
+i_maxPierce  = input.float(1.5, "Level: max distance through it (avg ranges)", minval = 0.0, step = 0.1, group = G_SET)
+i_lvlLook    = input.int(100, "Level: use swings from the last N candles", minval = 10, group = G_SET)
+i_sizeRatio  = input.float(1.3, "Size: last candle vs average range", minval = 0.1, step = 0.1, group = G_SET)
+i_plan       = input.bool(true, "Draw entry and stop on passing setups", group = G_SET)
+i_showMA     = input.bool(true, "Plot the trend average", group = G_SET)
+i_planCol    = input.color(#2a43c4, "Entry line", group = G_SET, inline = "g_set_c")
+i_lvlCol     = input.color(#6b4fbb, "Level line", group = G_SET, inline = "g_set_c")
 
 // ───────────── candle helpers (k = bars back) ─────────────
 rng(int k)  => high[k] - low[k]
@@ -259,13 +276,15 @@ drawBox(int len, color col) =>
         lo := math.min(lo, low[j])
     box.new(bar_index - len + 1, hi, bar_index, lo, border_color = col, bgcolor = color.new(col, 88))
 
+label bullLbl = na
+label bearLbl = na
 if ready
     if bullTxt != ""
-        label.new(bar_index, low, bullTxt, yloc = yloc.belowbar, style = label.style_label_up, color = i_bullCol, textcolor = color.white, size = size.small, tooltip = bullTip)
+        bullLbl := label.new(bar_index, low, bullTxt, yloc = yloc.belowbar, style = label.style_label_up, color = i_bullCol, textcolor = color.white, size = size.small, tooltip = bullTip)
         if i_boxes and bullLen > 1
             drawBox(bullLen, i_bullCol)
     if bearTxt != ""
-        label.new(bar_index, high, bearTxt, yloc = yloc.abovebar, style = label.style_label_down, color = i_bearCol, textcolor = color.white, size = size.small, tooltip = bearTip)
+        bearLbl := label.new(bar_index, high, bearTxt, yloc = yloc.abovebar, style = label.style_label_down, color = i_bearCol, textcolor = color.white, size = size.small, tooltip = bearTip)
         if i_boxes and bearLen > 1
             drawBox(bearLen, i_bearCol)
     if neutTxt != ""
@@ -290,6 +309,9 @@ swingLow() =>
             ok := false
     ok
 
+swH = swingHigh()
+swL = swingLow()
+
 var int lastKind = 0
 var float hiCur = na
 var float hiRef = na
@@ -307,8 +329,8 @@ var line loLine = na
 tagColor(string t) => t == "HH" or t == "HL" ? i_bullCol : t == "LH" or t == "LL" ? i_bearCol : color.gray
 
 if i_struct
-    isH = swingHigh()
-    isL = swingLow()
+    isH = swH
+    isL = swL
     if isH
         p = high[n]
         b = bar_index - n
@@ -356,6 +378,108 @@ if i_struct and i_table and barstate.islast
     table.cell(tbl, 0, 2, "Last swing low", text_color = chart.fg_color, text_size = size.small)
     table.cell(tbl, 1, 2, loTag == "" ? "-" : loTag, text_color = tagColor(loTag), text_size = size.small)
 
+// ───────────── setup checklist ─────────────
+maLine = ta.sma(close, i_maLen)
+plot(i_setup != "Off" and i_showMA ? maLine : na, "Trend average", color = color.new(#b7791f, 0), linewidth = 2)
+
+// Support/resistance candidates: every confirmed swing high and low (old resistance can
+// become support and the other way round), remembered for i_lvlLook candles.
+var array<float> lvlPrice = array.new<float>()
+var array<int> lvlBar = array.new<int>()
+var array<int> lvlConf = array.new<int>()
+if swH
+    lvlPrice.push(high[n])
+    lvlBar.push(bar_index - n)
+    lvlConf.push(bar_index)
+if swL
+    lvlPrice.push(low[n])
+    lvlBar.push(bar_index - n)
+    lvlConf.push(bar_index)
+while lvlConf.size() > 0 and lvlConf.first() < bar_index - i_lvlLook
+    lvlPrice.shift()
+    lvlBar.shift()
+    lvlConf.shift()
+
+// Grades a pattern of length L ending on this bar; dir 1 bullish, -1 bearish.
+setupCheck(int L, int dir) =>
+    a = atrFor(L)
+    slope = a > 0 ? (maLine[L] - maLine[L + i_maLook]) / a : na
+    trendOk = dir > 0 ? slope >= i_maSlope : slope <= -i_maSlope
+    ext = dir > 0 ? low : high
+    for j = 1 to L
+        if j < L
+            ext := dir > 0 ? math.min(ext, low[j]) : math.max(ext, high[j])
+    startBar = bar_index - L + 1
+    float bestDist = na
+    float bestPrice = na
+    int bestBar = na
+    for j = 0 to lvlPrice.size()
+        if j < lvlPrice.size()
+            if lvlConf.get(j) < startBar
+                lp = lvlPrice.get(j)
+                d = dir > 0 ? (ext - lp) / a : (lp - ext) / a
+                rightSide = dir > 0 ? close >= lp : close <= lp
+                if d <= i_lvlTol and d >= -i_maxPierce and rightSide
+                    if na(bestDist) or math.abs(d) < math.abs(bestDist)
+                        bestDist := d
+                        bestPrice := lp
+                        bestBar := lvlBar.get(j)
+    levelOk = not na(bestDist)
+    ratio = a > 0 ? rng(0) / a : na
+    sizeOk = ratio >= i_sizeRatio
+    [trendOk, levelOk, sizeOk, slope, bestDist, bestPrice, bestBar, ratio, ext, a]
+
+bullSetName = p_mstar and e_mstar ? "Morning Star" : p_buEng and e_buEng ? "Bullish Engulfing" : p_pierce and e_pierce ? "Piercing Line" : p_twB and e_twB ? "Tweezer Bottom" : p_ham and e_ham ? "Hammer" : ""
+bullSetLen = bullSetName == "Morning Star" ? 3 : bullSetName == "Hammer" or bullSetName == "" ? 1 : 2
+bearSetName = p_estar and e_estar ? "Evening Star" : p_beEng and e_beEng ? "Bearish Engulfing" : p_dcc and e_dcc ? "Dark Cloud Cover" : p_twT and e_twT ? "Tweezer Top" : p_sstar and e_sstar ? "Shooting Star" : ""
+bearSetLen = bearSetName == "Evening Star" ? 3 : bearSetName == "Shooting Star" or bearSetName == "" ? 1 : 2
+[uT, uL, uS, uSlope, uDist, uLvl, uLvlBar, uRatio, uExt, uAtr] = setupCheck(bullSetLen, 1)
+[dT, dL, dS, dSlope, dDist, dLvl, dLvlBar, dRatio, dExt, dAtr] = setupCheck(bearSetLen, -1)
+bullPass = bullSetName != "" and uT and uL and uS
+bearPass = bearSetName != "" and dT and dL and dS
+
+pipSize = syminfo.type == "forex" ? syminfo.mintick * 10 : syminfo.mintick
+pipWord = syminfo.type == "forex" ? " pips" : " ticks"
+mark(bool ok) => ok ? "✓" : "✗"
+fmt2(float v) => na(v) ? "n/a" : str.tostring(v, "#.##")
+
+checkText(bool t, bool l, bool s, bool pass) =>
+    (pass ? "★ SETUP\n" : "") + mark(t) + " Trend  " + mark(l) + " Level  " + mark(s) + " Size"
+checkTip(string name, int dir, float slope, bool lvlOk, float dist, float lvl, float ratio, bool pass) =>
+    side = dir > 0 ? "support" : "resistance"
+    lvlLine = lvlOk ? "Level: " + side + " at " + str.tostring(lvl, format.mintick) + " (swing level), pattern extreme " + fmt2(dist) + " avg ranges " + (dist >= 0 ? "short of it" : "through it") + ", closed back on the right side." : "Level: no recent swing level within " + str.tostring(i_lvlTol) + " avg ranges that the pattern closed back " + (dir > 0 ? "above." : "below.")
+    "Setup checklist for " + name + ": " + (pass ? "take it." : "skip it.") + "\nTrend: " + str.tostring(i_maLen) + "-period average slope " + fmt2(slope) + " avg ranges over " + str.tostring(i_maLook) + " candles (needs " + (dir > 0 ? ">= +" : "<= -") + str.tostring(i_maSlope) + ").\n" + lvlLine + "\nSize: last candle " + fmt2(ratio) + "x the average range (needs >= " + str.tostring(i_sizeRatio) + "x).\nSource: Monster Guide pp. 14, 20. Numbers are the trainer's thresholds; the guide states the checks in words."
+
+drawPlan(int dir, float ext, float a) =>
+    buffer = math.max(2 * pipSize, math.round(0.1 * a / pipSize) * pipSize)
+    entry = close
+    stop = dir > 0 ? ext - buffer : ext + buffer
+    risk = math.abs(entry - stop) / pipSize
+    line.new(bar_index, entry, bar_index + 8, entry, color = i_planCol, width = 1)
+    line.new(bar_index, stop, bar_index + 8, stop, color = i_bearCol, style = line.style_dotted, width = 1)
+    label.new(bar_index + 8, entry, "Entry ≈ " + str.tostring(entry, format.mintick), style = label.style_label_left, color = color.new(i_planCol, 100), textcolor = i_planCol, size = size.small)
+    label.new(bar_index + 8, stop, "Stop " + str.tostring(stop, format.mintick) + " (" + str.tostring(risk, "#.#") + pipWord + ")", style = label.style_label_left, color = color.new(i_bearCol, 100), textcolor = i_bearCol, size = size.small)
+
+showChecks(bool pass) => i_setup == "Show on setup patterns" or (i_setup == "Only passing setups" and pass)
+
+if ready and i_setup != "Off"
+    if bullSetName != "" and not na(bullLbl) and showChecks(bullPass)
+        label.set_text(bullLbl, label.get_text(bullLbl) + "\n" + checkText(uT, uL, uS, bullPass))
+        label.set_tooltip(bullLbl, bullTip + "\n\n" + checkTip(bullSetName, 1, uSlope, uL, uDist, uLvl, uRatio, bullPass))
+        if uL
+            line.new(uLvlBar, uLvl, bar_index, uLvl, color = i_lvlCol, style = line.style_dotted, width = 1)
+        if bullPass and i_plan
+            drawPlan(1, uExt, uAtr)
+    if bearSetName != "" and not na(bearLbl) and showChecks(bearPass)
+        label.set_text(bearLbl, checkText(dT, dL, dS, bearPass) + "\n" + label.get_text(bearLbl))
+        label.set_tooltip(bearLbl, bearTip + "\n\n" + checkTip(bearSetName, -1, dSlope, dL, dDist, dLvl, dRatio, bearPass))
+        if dL
+            line.new(dLvlBar, dLvl, bar_index, dLvl, color = i_lvlCol, style = line.style_dotted, width = 1)
+        if bearPass and i_plan
+            drawPlan(-1, dExt, dAtr)
+    if bullPass or bearPass
+        alert(syminfo.ticker + " " + timeframe.period + ": " + (bullPass ? bullSetName + " setup passes the checklist (long)" : bearSetName + " setup passes the checklist (short)"), alert.freq_once_per_bar_close)
+
 // ───────────── alerts ─────────────
 // For one alert covering every enabled pattern, create an alert on this indicator and
 // choose "Any alert() function call". The conditions below allow per-pattern alerts.
@@ -373,4 +497,6 @@ alertcondition(p_twB, "Tweezer Bottom", "{{ticker}} {{interval}}: Tweezer Bottom
 alertcondition(p_twT, "Tweezer Top", "{{ticker}} {{interval}}: Tweezer Top")
 alertcondition(p_mstar, "Morning Star", "{{ticker}} {{interval}}: Morning Star")
 alertcondition(p_estar, "Evening Star", "{{ticker}} {{interval}}: Evening Star")
+alertcondition(bullPass, "Bullish setup passes checklist", "{{ticker}} {{interval}}: bullish setup passes the Monster Guide checklist")
+alertcondition(bearPass, "Bearish setup passes checklist", "{{ticker}} {{interval}}: bearish setup passes the Monster Guide checklist")
 alertcondition(structTrend != structTrend[1], "Structure trend changed", "{{ticker}} {{interval}}: market structure trend changed")

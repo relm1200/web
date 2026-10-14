@@ -24,6 +24,16 @@ for (let i = 21; i < cs.length - 1; i++) {
   if (!ids.length) continue;
   rows.push(`| ${fmt(cs[i].t)} | ${ids.map((id) => L.BY_ID[id].name).join(', ')} |`);
 }
+// Setup checklist on every setup pattern (live levels = confirmed swings, as in the indicator)
+const setupRows = [];
+for (let i = 31; i < cs.length - 1; i++) {
+  for (const id of L.detectAt(cs, i).filter((x) => L.SETUP_PATTERNS.includes(x))) {
+    const ev = S.evaluateSetupLive(cs, i, id);
+    const m = (ok) => (ok ? '✓' : '✗');
+    const lvl = ev.level.ok ? `${ev.level.price} (${ev.level.dist.toFixed(2)} avg ranges)` : '-';
+    setupRows.push(`| ${fmt(cs[i].t)} | ${L.BY_ID[id].name} | ${m(ev.trend.ok)} ${ev.trend.slope.toFixed(2)} | ${m(ev.level.ok)} ${lvl} | ${m(ev.size.ok)} ${ev.size.ratio.toFixed(2)}x | ${ev.pass ? '**take**' : 'skip'} |`);
+  }
+}
 const { swings, trend } = S.analyse(cs.slice(0, -1));
 const lastSwings = swings.filter((s) => s.label).slice(-6).map((s) => `${s.label} at ${fmt(cs[s.index].t)} (${s.kind === 'high' ? cs[s.index].h : cs[s.index].l})`);
 
@@ -46,6 +56,19 @@ ${Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([id, c]) => `- ${L.BY_
 Trend: **${S.TRENDS[trend.dir].name}**. Latest labelled swings:
 
 ${lastSwings.map((s) => `- ${s}`).join('\n')}
+
+## Setup checklist
+
+Every setup pattern (Hammer, Bullish Engulfing, Piercing Line, Tweezer Bottom, Morning Star and
+their bearish mirrors) graded as the indicator grades it: trend = 20-period average slope
+over 10 candles (needs at least 1.0 average ranges in the pattern's direction), level =
+nearest confirmed swing from the last 100 candles that the pattern reaches (within 0.6 short, up to 1.5
+through) and closes back beyond, size = last candle's range vs the average range (needs
+1.3x).
+
+| Candle open (UTC) | Pattern | Trend (slope) | Level | Size | Verdict |
+|---|---|---|---|---|---|
+${setupRows.join('\n')}
 
 ## Every marked candle
 

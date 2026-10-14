@@ -30,6 +30,37 @@ TwB / TwT Tweezer Bottom / Top, MS / ES Morning / Evening Star, 3WS Three White 
 R3M / F3M Rising / Falling Three Methods. Switch **Label text** to "Full name" to show names
 instead.
 
+## Setup checklist
+
+The Monster Guide (pp. 14 and 20) only takes a reversal pattern when three things line up.
+The indicator grades these patterns against them: Hammer, Bullish Engulfing, Piercing Line,
+Tweezer Bottom, Morning Star, and their bearish mirrors (Shooting Star, Bearish Engulfing,
+Dark Cloud Cover, Tweezer Top, Evening Star).
+
+| Check | Passes when |
+|---|---|
+| **Trend** | The 20-period average (plotted in amber) has risen at least 1.0 average ranges over the 10 candles before the pattern (fallen, for bearish patterns). |
+| **Level** | The pattern reaches a support or resistance level and closes back on the right side. It can stop up to 0.6 average ranges short of the level or go up to 1.5 through it. |
+| **Size** | The last candle's range is at least 1.3 times the average range of the 10 candles before the pattern. |
+
+On the chart, the checklist is added to the pattern's label as `✓ Trend ✗ Level ✓ Size`.
+Hovering the label shows each measurement. When a level is used, a dotted purple line runs
+from the swing that made it. When all three checks pass, the label says **★ SETUP** and the
+indicator draws the guide's trade plan: entry at about the close (the next candle's open)
+and a stop just beyond the pattern's extreme, with the risk in pips.
+
+**Where the levels come from:** on a live chart nobody has drawn support and resistance, so
+the indicator uses every confirmed swing high and swing low from the last 100 candles as a
+level. A swing must be confirmed before the pattern starts, so the level can't come from the
+pattern itself. Old resistance can act as support and the other way round, as in the
+guide's examples. If several levels qualify, the nearest one is used. This is the one place
+the indicator goes beyond the trainer, which draws the level for you on each practice chart.
+
+Set **Checklist** to "Only passing setups" to see the grades only on setups that pass, or
+"Off" to hide them. Alerts: "Bullish setup passes checklist", "Bearish setup passes
+checklist", or the general "Any alert() function call" alert, which also reports passing
+setups.
+
 ## Settings
 
 | Setting | Default | Meaning |
@@ -39,7 +70,8 @@ instead.
 | Average range length | 10 | Candles used to measure "normal" candle size. |
 | Trend lookback | 6 | Candles before the pattern used to judge the decline or rally. |
 | Trend threshold | 1.5 | Net move, in average ranges, that counts as a decline or rally. |
-| Swing strength | 2 | Candles on each side a swing high or low must beat. |
+| Swing strength | 2 | Candles on each side a swing high or low must beat. Also sets which swings count as levels for the checklist. |
+| Checklist thresholds | 20 / 10 / 1.0 / 0.6 / 1.5 / 1.3 | Average length, slope window, minimum slope, level distance short of / through, size ratio. The guide states the checks in words; these numbers are the trainer's. |
 
 Keep the context settings at their defaults to match the trainer exactly.
 
@@ -79,6 +111,9 @@ reading the code. The logic was checked automatically (`tests/pine-parity.test.j
   flags.
 - A mirror of the market-structure section is checked against the trainer's swing
   detector, including outside bars that are both a swing high and a swing low.
+- The Pine `setupCheck` function is translated as well and compared with the trainer's
+  `evaluateSetupLive` on every setup pattern in generated setup charts and the real data. It
+  must agree on all three checks, the slope, and which level was chosen.
 
 If TradingView reports a compile error when you add the script, send me the message and
 line number.
@@ -86,7 +121,8 @@ line number.
 ## Checking it on your chart
 
 `reference/OANDA_EURUSD_4h.md` lists every candle the indicator should mark on
-OANDA:EURUSD, 4-hour, for the 600 bars ending 14 Oct 2026, plus the final swing labels.
+OANDA:EURUSD, 4-hour, for the 600 bars ending 14 Oct 2026, the checklist grade for each
+setup pattern (1 of 12 passes), and the final swing labels.
 Open that chart, add the indicator with default settings, and compare a few rows. Times in
 the file are UTC; TradingView shows your chart's timezone.
 

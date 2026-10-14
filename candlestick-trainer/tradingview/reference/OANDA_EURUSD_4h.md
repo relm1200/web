@@ -34,6 +34,30 @@ Trend: **Downtrend**. Latest labelled swings:
 - LL at 2026-10-12 17:00 UTC (1.11526)
 - LH at 2026-10-13 13:00 UTC (1.12047)
 
+## Setup checklist
+
+Every setup pattern (Hammer, Bullish Engulfing, Piercing Line, Tweezer Bottom, Morning Star and
+their bearish mirrors) graded as the indicator grades it: trend = 20-period average slope
+over 10 candles (needs at least 1.0 average ranges in the pattern's direction), level =
+nearest confirmed swing from the last 100 candles that the pattern reaches (within 0.6 short, up to 1.5
+through) and closes back beyond, size = last candle's range vs the average range (needs
+1.3x).
+
+| Candle open (UTC) | Pattern | Trend (slope) | Level | Size | Verdict |
+|---|---|---|---|---|---|
+| 2026-06-07 21:00 UTC | Bullish Engulfing | ✗ -0.67 | ✗ - | ✗ 0.93x | skip |
+| 2026-06-08 09:00 UTC | Bullish Engulfing | ✗ -1.08 | ✗ - | ✓ 1.63x | skip |
+| 2026-06-09 13:00 UTC | Bearish Engulfing | ✓ -1.88 | ✓ 1.15864 (0.37 avg ranges) | ✓ 2.22x | **take** |
+| 2026-07-31 09:00 UTC | Bearish Engulfing | ✗ 1.44 | ✓ 1.1537 (0.34 avg ranges) | ✓ 1.36x | skip |
+| 2026-08-10 09:00 UTC | Bearish Engulfing | ✗ 0.70 | ✓ 1.15597 (-0.34 avg ranges) | ✗ 1.04x | skip |
+| 2026-08-27 13:00 UTC | Bullish Engulfing | ✗ -1.11 | ✓ 1.16422 (-0.49 avg ranges) | ✓ 1.73x | skip |
+| 2026-08-30 21:00 UTC | Tweezer Bottom | ✗ -0.82 | ✓ 1.15808 (-0.18 avg ranges) | ✗ 0.95x | skip |
+| 2026-09-02 09:00 UTC | Tweezer Bottom | ✗ -1.83 | ✓ 1.15666 (-0.01 avg ranges) | ✗ 1.24x | skip |
+| 2026-09-11 09:00 UTC | Hammer | ✗ 0.01 | ✓ 1.15665 (0.15 avg ranges) | ✓ 1.88x | skip |
+| 2026-09-22 17:00 UTC | Piercing Line | ✗ -1.27 | ✗ - | ✓ 1.39x | skip |
+| 2026-10-07 13:00 UTC | Piercing Line | ✗ -1.11 | ✓ 1.11612 (0.13 avg ranges) | ✗ 1.14x | skip |
+| 2026-10-14 05:00 UTC | Bearish Engulfing | ✗ -0.50 | ✓ 1.1213 (0.09 avg ranges) | ✗ 0.95x | skip |
+
 ## Every marked candle
 
 | Candle open (UTC) | Pattern(s) |

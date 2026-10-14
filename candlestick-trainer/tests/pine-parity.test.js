@@ -25,6 +25,11 @@ const MAP = {
 
 function expr(e) {
   return e
+    .replace(/\bna\(([^()]+)\)/g, 'Number.isNaN($1)')
+    .replace(/\bna\b/g, 'NaN')
+    .replace(/\.size\(\)/g, '.length')
+    .replace(/\.get\(([^()]+)\)/g, '[$1]')
+    .replace(/\bmaLine\[([^\]]+)\]/g, 'maLine($1)')
     .replace(/\bavgRange\[([^\]]+)\]/g, 'avgRange($1)')
     .replace(/\b(high|low|open|close)\[([^\]]+)\]/g, 'bar.$1($2)')
     .replace(/(?<![.\w])(high|low|open|close)\b(?!\()/g, 'bar.$1(0)')
@@ -48,7 +53,8 @@ function translate(src) {
     if (!raw.trim() || raw.trim().startsWith('//')) continue;
     const ind = indentOf(raw);
     close(ind);
-    const line = raw.trim();
+    const line = raw.trim().replace(/^\[([^\]]+)\]$/, 'return [$1]');
+    if (line.startsWith('return [')) { out.push(line.replace(/\bna\b/g, 'NaN') + ';'); continue; }
     if (line.startsWith('avgRange = ta.sma(')) continue; // supplied by the harness (same formula)
     let m;
     if ((m = line.match(/^(\w+)\(([^)]*)\)\s*=>\s*(.*)$/))) {
@@ -69,6 +75,7 @@ function translate(src) {
     if ((m = line.match(/^if (.+)$/))) { out.push(`if (${expr(m[1])}) {`); stack.push(ind); continue; }
     if ((m = line.match(/^(\w+)\s+:=\s+(.+)$/))) { out.push(`${m[1]} = ${expr(m[2])};`); continue; }
     if ((m = line.match(/^(\w+)\s+=\s+(.+)$/))) { out.push(`let ${m[1]} = ${expr(m[2])};`); continue; }
+    if ((m = line.match(/^(?:float|int|bool|string)\s+(\w+)\s+=\s+(.+)$/))) { out.push(`let ${m[1]} = ${expr(m[2])};`); continue; }
     throw new Error('Untranslated Pine line: ' + line);
   }
   close(0);
@@ -168,4 +175,61 @@ test('Pine market-structure labels match the trainer', () => {
     assert.deepEqual([...got.keys()].sort(), want.map(key).sort());
     for (const s of want) assert.equal(got.get(key(s)), s.label);
   }
+});
+
+// ---------- setup checklist ----------
+// Translate the Pine setupCheck() function and compare it with structure.js evaluateSetupLive().
+function extractFn(src, name) {
+  const lines = src.split('\n');
+  const i = lines.findIndex((l) => l.startsWith(name + '('));
+  let k = i + 1;
+  while (k < lines.length && (lines[k].startsWith(' ') || !lines[k].trim())) k++;
+  return lines.slice(i, k).join('\n');
+}
+const SETUP_JS = translate('// ───────────── candle helpers\n' + extractFn(PINE, 'setupCheck') + '\n// ───────────── marking');
+const setupFactory = new Function('bar', 'avgRange', 'maLine', 'bar_index', 'lvlPrice', 'lvlBar', 'lvlConf',
+  'i_atrLen', 'i_trendLen', 'i_trendThr', 'i_maLook', 'i_maSlope', 'i_lvlTol', 'i_maxPierce', 'i_sizeRatio',
+  `${JS}\n${SETUP_JS}\nreturn setupCheck;`);
+
+function pineSetup(cs, i, L, dir) {
+  const bar = { high: (k) => cs[i - k].h, low: (k) => cs[i - k].l, open: (k) => cs[i - k].o, close: (k) => cs[i - k].c };
+  const avgRange = (k) => { let t = 0; for (let j = 0; j < 10; j++) t += cs[i - k - j].h - cs[i - k - j].l; return t / 10; };
+  const maLine = (k) => { if (i - k - 19 < 0) return NaN; let t = 0; for (let j = 0; j < 20; j++) t += cs[i - k - j].c; return t / 20; };
+  // Pine's level arrays at bar i: swings pushed when confirmed, pruned after 100 candles
+  const lv = S.rawSwings(cs.slice(0, i + 1), 2).filter((s) => s.confirmed >= i - 100);
+  const fn = setupFactory(bar, avgRange, maLine, i, lv.map((s) => s.price), lv.map((s) => s.index), lv.map((s) => s.confirmed),
+    10, 6, 1.5, 10, 1.0, 0.6, 1.5, 1.3);
+  return fn(L, dir);
+}
+
+test('Pine setup checklist matches the trainer on every setup pattern', () => {
+  const rng = L.mulberry32(77);
+  const charts = [];
+  for (const id of L.SETUP_PATTERNS) {
+    for (let n = 0; n < 12; n++) {
+      const want = { trend: rng() < 0.5, level: rng() < 0.5, size: rng() < 0.5 };
+      charts.push(L.generateSetup(id, rng, want).candles);
+    }
+  }
+  const real = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'tradingview', 'reference', 'OANDA_EURUSD_4h.json'), 'utf8'));
+  charts.push(real.c.map((c, i) => ({ o: real.o[i], h: real.h[i], l: real.l[i], c })));
+  let checked = 0, passed = 0, levelHits = 0;
+  for (const cs of charts) {
+    for (let i = 31; i < cs.length; i++) {
+      for (const id of L.detectAt(cs, i).filter((x) => L.SETUP_PATTERNS.includes(x))) {
+        const def = L.BY_ID[id];
+        const js = S.evaluateSetupLive(cs, i, id);
+        const [trendOk, levelOk, sizeOk, slope, dist, price] = pineSetup(cs, i, def.candles, def.signal === 'bullish' ? 1 : -1);
+        const tag = `${id} at bar ${i}`;
+        assert.equal(trendOk, js.trend.ok, tag + ' trend');
+        assert.equal(sizeOk, js.size.ok, tag + ' size');
+        assert.equal(levelOk, js.level.ok, tag + ' level');
+        if (js.level.ok) { assert.equal(price, js.level.price, tag + ' level price'); assert.ok(Math.abs(dist - js.level.dist) < 1e-9); levelHits++; }
+        assert.ok(Math.abs(slope - js.trend.slope) < 1e-9 || (Number.isNaN(slope) && js.trend.slope === 0), tag + ' slope');
+        checked++;
+        if (js.pass) passed++;
+      }
+    }
+  }
+  assert.ok(checked > 100 && levelHits > 20 && passed > 5, `checked ${checked}, level hits ${levelHits}, passes ${passed}`);
 });
