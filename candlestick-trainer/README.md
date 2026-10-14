@@ -75,7 +75,9 @@ are the trainer's own; the guide gives no figures.
 patterns on live TradingView charts. It grades reversal patterns against the Monster Guide's
 setup checklist (with entry and stop on passing setups), and adds optional HH / HL / LH / LL
 swing labels, a trend table and alerts. Install steps, settings and a reference list of expected marks on real
-EUR/USD data are in [`tradingview/README.md`](tradingview/README.md). A parity test
+EUR/USD data are in [`tradingview/README.md`](tradingview/README.md). A second indicator,
+`tradingview/trend-pullback-plan.pine`, automates the USD/JPY 5-minute trading plan (four direction
+filters, pullback zone, trigger patterns, stop, targets and size), with `js/plan.js` as its tested reference. A parity test
 translates the Pine rules to JavaScript and checks they flag exactly what the trainer flags.
 
 ## Market structure

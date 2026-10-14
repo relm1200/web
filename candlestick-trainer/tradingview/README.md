@@ -131,3 +131,55 @@ To make a list for another symbol, save its bars in the same JSON shape and run:
 ```
 node tradingview/reference/make-reference.js path/to/bars.json
 ```
+
+---
+
+# Trend Pullback Plan: TradingView indicator
+
+`trend-pullback-plan.pine` automates the "USD/JPY 5-Minute Trading Plan". Install it the same
+way as Wick Reader Patterns (Pine Editor, paste, Save, Add to chart). The two can run together.
+
+## What it does
+
+| Plan rule | What the indicator checks |
+|---|---|
+| Direction filter | 8 / 20 / 50 averages stacked with price beyond the 20; momentum (MACD 12/26/9) beyond zero; Vortex (50) in the same direction; structure HH+HL or LH+LL. All four must agree. The background is tinted while they do. |
+| Location | The pattern reaches the 20-period average (within 0.3 average ranges) or one of your levels and closes back on the right side. |
+| Trigger | Shorts: Bearish Engulfing, Shooting Star, Evening Star, Dark Cloud Cover. Longs: Bullish Engulfing, Hammer, Morning Star, Piercing Line. Same shape rules as Wick Reader. |
+| Stop | 2 pips beyond the pattern (Monster Guide). Skipped if that is past the 50-period average. |
+| Targets | The next level in the trade's direction: your levels, plus clear swing highs/lows (5 candles each side) from the last 100 candles. The first target must be at least 1.5R. |
+| No-trade | Momentum crossing zero 3+ times in 20 candles counts as choppy. An optional session filter. |
+| Size | Lots for your account balance and risk %, for pairs quoted in USD or with USD as the base (USD/JPY). |
+
+A signal label shows entry (about the next open), stop with pips, T1 with its R, T2 and size,
+with lines drawn forward. The table (top right) shows each filter's state on the latest candle.
+
+**Your levels:** TradingView indicators can't read lines you draw, so type today's levels into
+the Level 1–4 settings (0 = off).
+
+## Settings worth knowing
+
+- **Average type:** EMA by default. Switch to SMA if your MA ribbon uses simple averages.
+- **Momentum: also require the line beyond its signal line:** off by default. A pullback lifts
+  momentum through its signal line, so this blocks nearly every pullback entry. On 13–14 Oct
+  USD/JPY data it left no trigger in the pullback zone.
+- **Stop goes beyond:** "Pattern" by default. "Pattern or latest swing" gives wider stops; on
+  the same data it pushed every first target below 1R.
+- **Also require each pattern's own trend context:** off by default, because the direction
+  filter and pullback zone already supply context.
+
+## Expect few signals
+
+On 339 closed USD/JPY 5-minute candles (13–14 Oct 2026) the four filters agreed 21% of the time,
+7 trigger patterns formed while they did, and none passed: most had a level less than 1.5R away.
+See `reference/FX_USDJPY_5m-plan.md`. That is the plan working as written. Judge it on the
+50-setup Bar Replay test, not on one day.
+
+## How it was checked
+
+`tests/plan-parity.test.js` translates the indicator's helpers, triggers and decision functions to
+JavaScript and compares them bar by bar with `js/plan.js`, an independent reference, on generated
+trend/pullback charts, the trainer's setup charts and the real USD/JPY data: direction, pattern,
+zone, stop, both targets, R and the final signal all match (619 trigger bars, 13 full signals).
+The momentum, Vortex and average series come from the reference in that test; they use TradingView's
+standard formulas. Pine syntax can only be compiled inside TradingView.
