@@ -28,3 +28,19 @@ as files are edited, runs an LLM review of the diff at the end of each turn, and
 for injection, XSS, SSRF, hardcoded secrets and 25+ other vulnerability classes. Treat its
 findings as input to review, not a substitute for it. Set `SECURITY_GUIDANCE_DISABLE=1` to turn it
 off, or see the plugin README for finer switches (`ENABLE_STOP_REVIEW=0`, `ENABLE_COMMIT_REVIEW=0`).
+
+## Animation (Motion, formerly Framer Motion)
+
+The official Motion AI Kit (motiondivision/ai-kit, MIT) is set up for this project:
+
+- `/motion` skill in `.claude/skills/motion`: animation best practices for vanilla JS, React, Vue,
+  Base UI and Radix; docs and example search; CSS spring generation; MotionScore performance
+  audits; version upgrades. Use it for any animation work, including `framer-motion` code.
+- `motion-reviewer` agent in `.claude/agents`: audits animation performance across a directory.
+- `.mcp.json` registers Motion's hosted MCP servers. `motion` (https://mcp.motion.dev) is free
+  docs and example search. `motion-plus` (https://mcp.motion.dev/plus) needs a Motion+ sign-in
+  through the agent's MCP settings and unlocks spring generation, MotionScore and premium source.
+  Claude Code asks for approval before using project MCP servers.
+
+Upgrade by re-copying `plugins/motion` from the upstream repo (or running `npx motion-ai@latest`
+at project scope).
