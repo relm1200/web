@@ -4,3 +4,6 @@
 .impeccable/config.local.json
 .impeccable/live/
 .impeccable/build/
+# API keys for skill scripts (e.g. GEMINI_API_KEY); never commit
+.env
+.env.*

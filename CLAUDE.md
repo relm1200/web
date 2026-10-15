@@ -51,3 +51,13 @@ at project scope).
 styles, product palettes, font pairings, UX guidelines, icons, chart types and per-stack advice
 (22 stacks). Use it to look up concrete choices (palette, type pairing, UX rule) while working
 with `impeccable` or `design-taste-frontend`; its search scripts are offline Python.
+
+Companion skills from the same repo:
+
+- `design-system`: design tokens, component specs and slide-token validation.
+- `ui-styling`: shadcn/ui and Tailwind styling, with a helper that runs the shadcn CLI.
+- `design`: logo, icon and corporate-identity (CIP) generation. Its generators call Gemini,
+  AtlasCloud or MuAPI and need `GEMINI_API_KEY` (or `ATLASCLOUD_API_KEY` / `MUAPI_API_KEY`) in the
+  environment or a `.env` file; `.env` files are git-ignored.
+- `brand`: brand guidelines and voice. `banner-design`: banners and social graphics.
+  `slides`: presentation design.
