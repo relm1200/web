@@ -1,0 +1,6 @@
+# Taste Skill working files
+.taste-skill/
+# Impeccable machine-local / transient state (config.json and design.json are meant to be shared)
+.impeccable/config.local.json
+.impeccable/live/
+.impeccable/build/
