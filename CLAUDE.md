@@ -19,3 +19,12 @@ For frontend and web design work, use the design skills in `.claude/skills/`:
 
 Impeccable's optional auto-run design hooks (from its upstream `.claude/settings.json`) are not
 enabled here; its launcher downloads a prebuilt binary from GitHub releases on first use.
+
+## Security guidance
+
+The `security-guidance` plugin (Anthropic, from the official `claude-plugins-official`
+marketplace) is enabled for this project in `.claude/settings.json`. It warns on risky patterns
+as files are edited, runs an LLM review of the diff at the end of each turn, and reviews commits
+for injection, XSS, SSRF, hardcoded secrets and 25+ other vulnerability classes. Treat its
+findings as input to review, not a substitute for it. Set `SECURITY_GUIDANCE_DISABLE=1` to turn it
+off, or see the plugin README for finer switches (`ENABLE_STOP_REVIEW=0`, `ENABLE_COMMIT_REVIEW=0`).
