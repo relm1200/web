@@ -44,3 +44,10 @@ The official Motion AI Kit (motiondivision/ai-kit, MIT) is set up for this proje
 
 Upgrade by re-copying `plugins/motion` from the upstream repo (or running `npx motion-ai@latest`
 at project scope).
+
+## UI/UX reference data
+
+`ui-ux-pro-max` (nextlevelbuilder/ui-ux-pro-max-skill, MIT) is a searchable local database of UI
+styles, product palettes, font pairings, UX guidelines, icons, chart types and per-stack advice
+(22 stacks). Use it to look up concrete choices (palette, type pairing, UX rule) while working
+with `impeccable` or `design-taste-frontend`; its search scripts are offline Python.
