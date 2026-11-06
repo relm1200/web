@@ -176,8 +176,9 @@ nav.tabs button[aria-selected="true"]{color:var(--accent)}
   </section>
 
   <section id="p-alerts" data-panel="alerts" hidden>
-    <h2>Alerts <span id="alertsNote"></span></h2>
+    <h2>Alerts · NEAR &amp; AMD <span id="alertsNote"></span></h2>
     <div class="summary" id="alertSummary"></div>
+    <p class="note">This tab tracks only your NEAR (Binance) and AMD alerts. Other TradingView alerts are hidden here.</p>
     <h2>Closest to triggering</h2>
     <div class="stack" id="alertsNear"><div class="card skel">Loading alerts…</div></div>
     <h2>Other active alerts</h2>
@@ -239,6 +240,7 @@ const S = {
   cal: null, calErr: null, calKey: "", calUnsub: null,
   sheetSym: null, sheetInt: "1h", diagOpen: false,
   news: {}, newsAt: {}, newsErr: {}, newsUnsubs: {}, newsFilter: "all",
+  alertBars: {}, alertUnsubs: {},
 };
 
 /* ---------- diagnostics log ---------- */
@@ -349,13 +351,32 @@ function quote(sym){
   const last = b[b.length - 1].c, first = b[0].o ?? b[0].c;
   return {last, chg: first ? (last - first) / first * 100 : 0, closes: b.map(x => x.c)};
 }
-function activeAlerts(){ return (S.alerts || []).filter(a => a.active !== false); }
+// Only these instruments are tracked on the Alerts tab; ".P" (perpetual) maps to the same coin.
+const ALERT_FOCUS = ["NEARUSDT", "AMD"];
+const focusKey = s => ticker(s).replace(/\.P$/, "");
+const isFocus = s => ALERT_FOCUS.includes(focusKey(s));
+function activeAlerts(){ return (S.alerts || []).filter(a => a.active !== false && isFocus(a.symbol)); }
 function alertsFor(sym){ const k = ticker(sym); return activeAlerts().filter(a => ticker(a.symbol) === k); }
 function priceFor(alertSym){
   const k = ticker(alertSym);
   const s = S.symbols.find(x => ticker(x) === k);
   const q = s && quote(s);
-  return q ? q.last : null;
+  if (q) return q.last;
+  const b = S.alertBars[alertSym];
+  return b && b.length ? b[b.length - 1].c : null;
+}
+// Alert symbols that aren't on the active watchlist get their own price feed.
+function watchAlertPrices(){
+  const need = new Set(activeAlerts().map(a => a.symbol).filter(s => !S.symbols.some(x => ticker(x) === ticker(s))));
+  for (const s of Object.keys(S.alertUnsubs)) if (!need.has(s)) { S.alertUnsubs[s](); delete S.alertUnsubs[s]; delete S.alertBars[s]; }
+  for (const s of need) {
+    if (S.alertUnsubs[s]) continue;
+    S.alertUnsubs[s] = watch(T.ohlcv, {symbol: s, interval: "1h", count: 2}, ev => {
+      if (ev.type === "data") { try { const p = payloadOf(ev.result); S.alertBars[s] = (p && p.bars) || []; } catch (e) {} }
+      else if (DENY.has(ev.error.code)) delete S.alertBars[s];
+      renderAlerts();
+    }, {refetchInterval: QUOTE_MS, cache: {staleTime: 60000, gcTime: 3600000}});
+  }
 }
 function dist(a, price){
   if (price == null || a.threshold == null) return null;
@@ -435,12 +456,12 @@ function renderAlerts(){
         <div class="d ${isHot ? "" : "flat"}">${distLabel(a, d)}</div>
         <div class="m">${esc(pretty(a.symbol))} · ${condLabel(a.condition_type)} <span class="num">${fmt(a.symbol, a.threshold)}</span> · now <span class="num">${fmt(a.symbol, priceFor(a.symbol))}</span></div>
         <div class="meter" aria-hidden="true"><i style="width:${fill.toFixed(0)}%"></i></div></div>`;
-    }).join("") : `<div class="card skel">No active alerts on pairs in your watchlist.</div>`;
+    }).join("") : `<div class="card skel">${act.length ? "Loading prices for your NEAR and AMD alerts…" : "No active NEAR or AMD alerts. Create one in TradingView and it shows up here."}</div>`;
     $("alertsOther").innerHTML = other.length ? other.map(({a}) => `<div class="card al">
         <div class="t">${esc(a.name || pretty(a.symbol))}</div>
         <div class="d num">${fmt(a.symbol, a.threshold)}</div>
         <div class="m">${esc(a.symbol)} · ${condLabel(a.condition_type)}${a.expiration ? " · expires " + new Date(a.expiration).toLocaleDateString([], {month: "short", day: "numeric"}) : ""}${a.last_fire_time ? " · last fired " + ago(Date.parse(a.last_fire_time)) : ""}</div></div>`).join("")
-      : `<div class="card skel">Every active alert is on a watchlist pair.</div>`;
+      : `<div class="card skel">Every NEAR and AMD alert has a live price.</div>`;
     if (S.alertsErr) $("alertsNear").insertAdjacentHTML("afterbegin", `<p class="err">${esc(errText(S.alertsErr))}</p>`);
   }
   if (S.logErr && !S.log) $("alertLog").innerHTML = `<div class="card err">${esc(errText(S.logErr))}</div>`;
@@ -452,7 +473,7 @@ function renderAlerts(){
         <div class="t">${esc(ev.message || ev.name || pretty(ev.symbol))}</div>
         <div class="d flat">${ev.fired_at ? ago(Date.parse(ev.fired_at)) : ""}</div>
         <div class="m">${esc(pretty(ev.symbol))} · ${ev.fired_at ? new Date(ev.fired_at).toLocaleString([], {weekday: "short", hour: "2-digit", minute: "2-digit"}) : ""}${code ? ` · <span class="${bad ? "fail" : ""}">webhook ${bad ? "failed" : "delivered"} (${code})</span>` : ""}</div></div>`;
-    }).join("") : `<div class="card skel">No alerts fired in the last 7 days.</div>`;
+    }).join("") : `<div class="card skel">No NEAR or AMD alerts fired in the last 7 days.</div>`;
     if (S.logErr) $("alertLog").insertAdjacentHTML("afterbegin", `<p class="err">${esc(errText(S.logErr))}</p>`);
   }
 }
@@ -657,6 +678,7 @@ async function boot(){
       try { const p = payloadOf(ev.result); S.alerts = (p && p.alerts) || []; S.alertsErr = null; $("alertsNote").textContent = "Updated " + hm(stamp(ev.result)); }
       catch (e) { S.alertsErr = e; }
     } else { S.alertsErr = ev.error; if (DENY.has(ev.error.code)) S.alerts = null; }
+    watchAlertPrices();
     renderAlerts(); renderWatch();
   }, {refetchInterval: ALERT_MS, cache: {staleTime: 60000, gcTime: 3600000}});
 
@@ -664,7 +686,7 @@ async function boot(){
     if (ev.type === "data") {
       try {
         const p = payloadOf(ev.result);
-        S.log = ((p && p.events) || []).slice().sort((a, b) => Date.parse(b.fired_at) - Date.parse(a.fired_at));
+        S.log = ((p && p.events) || []).filter(e => isFocus(e.symbol || "")).sort((a, b) => Date.parse(b.fired_at) - Date.parse(a.fired_at));
         S.logErr = null; $("logNote").textContent = "Updated " + hm(stamp(ev.result));
       } catch (e) { S.logErr = e; }
     } else { S.logErr = ev.error; if (DENY.has(ev.error.code)) S.log = null; }
